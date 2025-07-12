@@ -6,7 +6,8 @@ import { getAdminUserById, approveUser, toggleUserStatus, updateUserProfile } fr
 import type { User, Campaign } from '../../types.ts';
 import Button from '../../components/Button.tsx';
 import CampaignCard from '../../components/CampaignCard.tsx';
-import { FiMail, FiPhone, FiCalendar, FiCheck, FiToggleLeft, FiToggleRight, FiArrowLeft, FiDollarSign, FiHeart, FiActivity, FiBriefcase, FiUser, FiUsers, FiInfo, FiAward, FiShield, FiTag, FiCreditCard, FiHome, FiMapPin, FiGlobe, FiEdit, FiSave } from 'react-icons/fi';
+import ShareProfileModal from '../../components/admin/ShareProfileModal.tsx';
+import { FiMail, FiPhone, FiCalendar, FiCheck, FiToggleLeft, FiToggleRight, FiArrowLeft, FiDollarSign, FiHeart, FiActivity, FiBriefcase, FiUser, FiUsers, FiInfo, FiAward, FiShield, FiTag, FiCreditCard, FiHome, FiMapPin, FiGlobe, FiEdit, FiSave, FiShare2, FiPenTool } from 'react-icons/fi';
 
 const statusBadge = (status: User['status']) => {
     const base = "px-3 py-1 text-sm font-semibold rounded-full inline-block";
@@ -78,6 +79,7 @@ const UserProfilePage: React.FC = () => {
     const [error, setError] = useState('');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [formData, setFormData] = useState<any>({});
 
     const fetchUser = async () => {
@@ -304,7 +306,13 @@ const UserProfilePage: React.FC = () => {
                             {user.isActive ? 'Disable' : 'Enable'}
                         </Button>
                     )}
-                    <Button onClick={handleEditClick} variant="secondary"><FiEdit className="mr-2"/>Edit Profile</Button>
+                    {(user.role === 'ngo' || user.role === 'company') && (
+                        <>
+                            <Button to={`/admin/users/${user.id}/customize`} variant="outline" title="Customize Public Page"><FiPenTool className="mr-2"/>Customize</Button>
+                            <Button onClick={() => setIsShareModalOpen(true)} variant="outline" title="Get Share Link"><FiShare2 className="mr-2"/>Share</Button>
+                        </>
+                    )}
+                    <Button onClick={handleEditClick} variant="secondary" title="Edit Profile Details"><FiEdit className="mr-2"/>Edit</Button>
                 </div>
             </div>
 
@@ -347,6 +355,11 @@ const UserProfilePage: React.FC = () => {
                     </div>
                 </div>
             )}
+            <ShareProfileModal
+                isOpen={isShareModalOpen}
+                onClose={() => setIsShareModalOpen(false)}
+                user={user}
+            />
         </motion.div>
     );
 };

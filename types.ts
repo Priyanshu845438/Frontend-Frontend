@@ -15,10 +15,12 @@ export interface User {
   isActive: boolean;
   approvalStatus: 'pending' | 'approved' | 'rejected';
   profile?: {
+    _id?: string;
     description?: string;
     address?: string;
     website?: string;
     // NGO specific
+    ngoName?: string;
     registrationNumber?: string;
     registeredYear?: string;
     numberOfEmployees?: number;
@@ -41,6 +43,9 @@ export interface User {
         branchName?: string;
     };
     // Company specific
+    companyName?: string;
+    companyEmail?: string;
+    companyPhoneNumber?: string;
     companyAddress?: string;
     companyType?: string;
     ceoName?: string;
@@ -61,7 +66,7 @@ export interface Campaign {
   fullDescription: string;
   goal: number;
   raised: number;
-  category: 'Health' | 'Education' | 'Environment' | 'Disaster Relief';
+  category: string;
   location: string;
   verified: boolean;
   urgent: boolean;
@@ -69,6 +74,19 @@ export interface Campaign {
   status: 'active' | 'completed' | 'disabled';
   endDate: string;
   isActive: boolean;
+  approvalStatus: 'pending' | 'approved' | 'rejected';
+  targetAmount?: number;
+  ngoId?: { _id: string; fullName: string; };
+  // Add all other fields from API
+  campaignName?: string;
+  goalAmount?: number;
+  currentAmount?: number;
+  beneficiaries?: string;
+  importance?: string;
+  explainStory?: string;
+  contactNumber?: string;
+  donationLink?: string;
+  createdBy?: string | User;
 }
 
 export interface Testimonial {

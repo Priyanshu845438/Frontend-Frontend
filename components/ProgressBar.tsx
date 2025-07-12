@@ -9,9 +9,9 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ value }) => {
   const cappedValue = Math.min(100, Math.max(0, value));
 
   return (
-    <div className="w-full bg-warm-gray-200 rounded-full h-2.5">
+    <div className="w-full bg-warm-gray-200 rounded-full h-2.5 dark:bg-gray-700">
       <div
-        className="bg-sky-blue h-2.5 rounded-full transition-all duration-500 ease-out"
+        className="bg-brand-gold h-2.5 rounded-full transition-all duration-500 ease-out"
         style={{ width: `${cappedValue}%` }}
       ></div>
     </div>

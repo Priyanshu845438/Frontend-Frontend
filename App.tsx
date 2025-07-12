@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter, Routes, Route, useLocation, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Outlet } from 'react-router-dom';
 
 // Layouts and Wrappers
 import Header from './components/Header.tsx';
@@ -21,15 +21,21 @@ import LegalPage from './pages/LegalPage.tsx';
 import LoginPage from './pages/LoginPage.tsx';
 import SignupPage from './pages/SignupPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
+import ShareProfilePage from './pages/ShareProfilePage.tsx';
+import ShareCampaignPage from './pages/ShareCampaignPage.tsx';
 
 // Admin Pages
 import AdminDashboardPage from './pages/admin/DashboardPage.tsx';
 import UserManagementPage from './pages/admin/UserManagementPage.tsx';
 import UserProfilePage from './pages/admin/UserProfilePage.tsx';
 import CampaignManagementPage from './pages/admin/CampaignManagementPage.tsx';
+import CreateCampaignPage from './pages/admin/CreateCampaignPage.tsx';
+import EditCampaignPage from './pages/admin/EditCampaignPage.tsx';
+import AdminCampaignDetailsPage from './pages/admin/AdminCampaignDetailsPage.tsx';
 import SettingsPage from './pages/admin/SettingsPage.tsx';
 import ReportsPage from './pages/admin/ReportsPage.tsx';
 import NoticesPage from './pages/admin/NoticesPage.tsx';
+import CustomizeSharePage from './pages/admin/CustomizeSharePage.tsx';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -52,7 +58,7 @@ const MainLayout = () => (
 
 const App: React.FC = () => {
     return (
-        <HashRouter>
+        <BrowserRouter>
             <ScrollToTop />
             <Routes>
                 {/* Public-facing routes */}
@@ -83,13 +89,21 @@ const App: React.FC = () => {
                     <Route path="dashboard" element={<AdminDashboardPage />} />
                     <Route path="users" element={<UserManagementPage />} />
                     <Route path="users/:userId" element={<UserProfilePage />} />
+                    <Route path="users/:userId/customize" element={<CustomizeSharePage />} />
                     <Route path="campaigns" element={<CampaignManagementPage />} />
+                    <Route path="campaigns/new" element={<CreateCampaignPage />} />
+                    <Route path="campaigns/:campaignId" element={<AdminCampaignDetailsPage />} />
+                    <Route path="campaigns/:campaignId/edit" element={<EditCampaignPage />} />
                     <Route path="notices" element={<NoticesPage />} />
                     <Route path="reports" element={<ReportsPage />} />
                     <Route path="settings" element={<SettingsPage />} />
                 </Route>
+
+                {/* Standalone Shared Pages */}
+                <Route path="/share/profile/:shareId" element={<ShareProfilePage />} />
+                <Route path="/share/campaign/:shareId" element={<ShareCampaignPage />} />
             </Routes>
-        </HashRouter>
+        </BrowserRouter>
     );
 };
 

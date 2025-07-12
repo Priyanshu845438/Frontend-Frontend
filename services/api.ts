@@ -42,12 +42,12 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
     approvalStatus: 'pending', 
     isActive: false 
   };
-  const goal = backendCampaign.targetAmount || 0;
+  const goal = backendCampaign.targetAmount || backendCampaign.goalAmount || 0;
   const raised = backendCampaign.currentAmount || 0;
 
   let status: Campaign['status'] = 'disabled';
   if (backendCampaign.isActive) {
-    if (raised >= goal || new Date(backendCampaign.endDate) < new Date()) {
+    if (raised >= goal && goal > 0) {
       status = 'completed';
     } else {
       status = 'active';
@@ -55,6 +55,7 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
   }
 
   return {
+    ...backendCampaign,
     id: backendCampaign._id,
     _id: backendCampaign._id,
     title: backendCampaign.title,
@@ -63,7 +64,7 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
     organizerId: organizer._id,
     organizerLogo: organizer.avatar || `https://picsum.photos/seed/${organizer.fullName}/100`,
     description: (backendCampaign.description || '').substring(0, 100) + '...',
-    fullDescription: backendCampaign.description || 'Full description not provided.',
+    fullDescription: backendCampaign.fullDescription || backendCampaign.description || backendCampaign.explainStory || 'Full description not provided.',
     goal,
     raised,
     category: backendCampaign.category || 'Health',
@@ -74,20 +75,20 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
     status,
     endDate: backendCampaign.endDate,
     isActive: backendCampaign.isActive,
+    approvalStatus: backendCampaign.approvalStatus || 'pending',
   };
 };
 
 export const transformBackendUser = (backendUser: any): User => {
   let status: 'active' | 'pending' | 'disabled';
   const isApproved = backendUser.approvalStatus === 'approved';
-  const isActive = isApproved ? backendUser.isActive !== false : backendUser.isActive === true;
-
-  if (isApproved) {
-    status = isActive ? 'active' : 'disabled';
-  } else if (backendUser.approvalStatus === 'pending') {
-    status = 'disabled';
+  
+  if (isApproved && backendUser.isActive) {
+      status = 'active';
+  } else if (!isApproved && backendUser.approvalStatus === 'pending') {
+      status = 'pending';
   } else {
-    status = 'pending';
+      status = 'disabled';
   }
 
   const name = backendUser.fullName || backendUser.name;
@@ -105,9 +106,10 @@ export const transformBackendUser = (backendUser: any): User => {
     status: status,
     avatar: backendUser.profileImage || `https://picsum.photos/seed/${name}/100`,
     createdAt: backendUser.createdAt,
-    isActive: isActive,
+    isActive: backendUser.isActive,
     approvalStatus: backendUser.approvalStatus,
     profile: {
+      _id: profileData._id,
       description: backendUser.description || profileData.description,
       address: backendUser.address || profileData.address || profileData.companyAddress,
       website: backendUser.website || profileData.website,
@@ -312,29 +314,25 @@ export const organizationAPI = {
 // Admin Endpoints
 export const adminAPI = {
   // Users Management
-  getUsers: async (filters?: { page?: number; limit?: number; role?: string; status?: string }): Promise<{ users: User[]; pagination?: any }> => {
-    try {
-      const queryParams = new URLSearchParams();
-      if (filters?.page) queryParams.append('page', filters.page.toString());
-      if (filters?.limit) queryParams.append('limit', filters.limit.toString());
-      if (filters?.role) queryParams.append('role', filters.role);
-      if (filters?.status) queryParams.append('status', filters.status);
+  getUsers: async (filters?: { page?: number; limit?: number; role?: string; approvalStatus?: string; search?: string }): Promise<{ users: User[]; pagination?: any }> => {
+    const queryParams = new URLSearchParams();
+    if (filters?.page) queryParams.append('page', filters.page.toString());
+    if (filters?.limit) queryParams.append('limit', filters.limit.toString());
+    if (filters?.role && filters.role !== 'all') queryParams.append('role', filters.role);
+    if (filters?.approvalStatus && filters.approvalStatus !== 'all') queryParams.append('approvalStatus', filters.approvalStatus);
+    if (filters?.search) queryParams.append('search', filters.search);
+    
+    const queryString = queryParams.toString();
+    const endpoint = queryString ? `/admin/users?${queryString}` : '/admin/users';
 
-      const queryString = queryParams.toString();
-      const endpoint = queryString ? `/admin/users?${queryString}` : '/admin/users';
+    const response = await request(endpoint);
+    const data = response.data || response;
+    const users = data.users || (Array.isArray(data) ? data : []);
 
-      const response = await request(endpoint);
-      const data = response.data || response;
-      const users = data.users || (Array.isArray(data) ? data : []);
-
-      return {
-        users: users.map(transformBackendUser),
-        pagination: data.pagination
-      };
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
-      return { users: [] };
-    }
+    return {
+      users: users.map(transformBackendUser),
+      pagination: data.pagination
+    };
   },
 
   getAllUsers: async (): Promise<User[]> => {
@@ -393,26 +391,16 @@ export const adminAPI = {
       body: JSON.stringify(profileData),
     }),
 
-  approveUser: (userId: string) => 
+  approveUser: (userId: string, status: 'approved' | 'rejected') => 
     request(`/admin/users/${userId}/approval`, {
       method: 'PUT',
-      body: JSON.stringify({ approvalStatus: 'approved' }),
-    }),
-
-  rejectUser: (userId: string) => 
-    request(`/admin/users/${userId}/approval`, {
-      method: 'PUT',
-      body: JSON.stringify({ approvalStatus: 'pending' }),
+      body: JSON.stringify({ approvalStatus: status }),
     }),
 
   toggleUserStatus: (user: User) => {
-    // Toggle between approved and rejected status for active/inactive
-    const newApprovalStatus = user.isActive ? 'pending' : 'approved';
-    return request(`/admin/users/${user._id}/approval`, {
+    return request(`/admin/users/${user._id}/details`, {
       method: 'PUT',
-      body: JSON.stringify({ 
-        approvalStatus: newApprovalStatus
-      }),
+      body: JSON.stringify({ isActive: !user.isActive }),
     });
   },
 
@@ -420,24 +408,84 @@ export const adminAPI = {
     request(`/admin/users/${userId}/complete`, {
       method: 'DELETE',
     }),
+    
+  generateNgoShareLink: (profileId: string) => 
+    request(`/admin/ngos/${profileId}/share`, { method: 'POST' }),
 
-  // Campaigns Management
-  getCampaigns: async (): Promise<Campaign[]> => {
-    const data = await request('/admin/campaigns');
-    const campaigns = data.campaigns || (Array.isArray(data) ? data : []);
-    return campaigns.map(transformBackendCampaign);
+  generateCompanyShareLink: (profileId: string) => 
+    request(`/admin/companies/${profileId}/share`, { method: 'POST' }),
+
+  getShareablePageDesign: async (shareId: string) => {
+    const response = await request(`/admin/share/${shareId}/customize`);
+    return response.customDesign || {};
   },
 
-  toggleCampaignStatus: (campaign: Campaign) => 
-    request(`/admin/campaigns/${campaign._id}/status`, {
+  updateShareablePageDesign: (shareId: string, design: { html: string; css: string; additionalData?: any }) =>
+    request(`/admin/share/${shareId}/customize`, {
       method: 'PUT',
-      body: JSON.stringify({ isActive: !campaign.isActive }),
+      body: JSON.stringify({ customDesign: design }),
+    }),
+  
+  getNgos: async (): Promise<User[]> => {
+    const { users } = await adminAPI.getUsers({ role: 'ngo', approvalStatus: 'approved', limit: 1000 });
+    return users;
+  },
+
+  // Campaigns Management
+  getCampaigns: async (filters: { page?: number; limit?: number; status?: string; approvalStatus?: string; search?: string }): Promise<{ campaigns: Campaign[]; pagination?: any }> => {
+    const queryParams = new URLSearchParams();
+    if (filters.page) queryParams.append('page', filters.page.toString());
+    if (filters.limit) queryParams.append('limit', filters.limit.toString());
+    if (filters.status && filters.status !== 'all') queryParams.append('status', filters.status);
+    if (filters.approvalStatus && filters.approvalStatus !== 'all') queryParams.append('approvalStatus', filters.approvalStatus);
+    if (filters.search) queryParams.append('search', filters.search);
+    
+    const queryString = queryParams.toString();
+    const endpoint = `/admin/campaigns?${queryString}`;
+    
+    const response = await request(endpoint);
+    const campaigns = response.data?.campaigns || response.campaigns || (Array.isArray(response) ? response : []);
+    
+    return {
+      campaigns: campaigns.map(transformBackendCampaign),
+      pagination: response.data?.pagination || response.pagination
+    };
+  },
+  
+  getCampaignById: async (campaignId: string): Promise<Campaign | null> => {
+    const data = await request(`/admin/campaigns/${campaignId}`);
+    return data ? transformBackendCampaign(data.campaign || data) : null;
+  },
+  
+  createCampaign: (campaignData: any) =>
+    request('/admin/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(campaignData),
+    }),
+
+  updateCampaign: (campaignId: string, campaignData: any) =>
+    request(`/admin/campaigns/${campaignId}`, {
+      method: 'PUT',
+      body: JSON.stringify(campaignData),
+    }),
+    
+  updateCampaignStatus: (campaignId: string, isActive: boolean) =>
+    request(`/admin/campaigns/${campaignId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive }),
     }),
 
   deleteCampaign: (campaignId: string) => 
     request(`/admin/campaigns/${campaignId}`, {
       method: 'DELETE',
     }),
+    
+  approveCampaign: (campaignId: string, status: 'approved' | 'rejected') => 
+    adminAPI.updateCampaign(campaignId, { approvalStatus: status }),
+  
+  generateCampaignShareLink: (campaignId: string) => 
+    request(`/admin/campaigns/${campaignId}/share`, { method: 'POST' }),
+
 
   // Dashboard & Reports
   getDashboardStats: async () => {
@@ -450,16 +498,16 @@ export const adminAPI = {
         totalUsers: overview.totalUsers || 0,
         totalCampaigns: overview.totalCampaigns || 0,
         totalDonations: overview.totalRaised || 0,
-        pendingApprovals: overview.pendingApprovals || 0,
+        pendingApprovals: (overview.pendingUsers || 0) + (overview.pendingCampaigns || 0),
         userDistribution: { 
-          donor: (overview.totalUsers || 0) - (overview.totalngos || 0) - (overview.totalCompanies || 0), 
-          ngo: overview.totalngos || 0, 
+          donor: (overview.totalUsers || 0) - (overview.totalNgos || 0) - (overview.totalCompanies || 0), 
+          ngo: overview.totalNgos || 0, 
           company: overview.totalCompanies || 0 
         },
         campaignStatus: { 
           active: overview.activeCampaigns || 0, 
-          completed: 0, 
-          disabled: (overview.totalCampaigns || 0) - (overview.activeCampaigns || 0) 
+          completed: overview.completedCampaigns || 0,
+          disabled: (overview.totalCampaigns || 0) - (overview.activeCampaigns || 0) - (overview.completedCampaigns || 0)
         },
         recentUsers: data.recentUsers || [],
         systemHealth: data.systemHealth || {}
@@ -486,6 +534,58 @@ export const adminAPI = {
     }),
 };
 
+// --- Public APIs ---
+export const getSharedProfile = async (shareId: string): Promise<{ user: User, campaigns: Campaign[], customization?: { html: string; css: string } } | null> => {
+    try {
+        const response = await request(`/public/share/profile/${shareId}`);
+        const data = response.data || response;
+
+        // Based on logs, the main user object is nested inside profile.userId
+        const userDetails = data.profile?.userId;
+
+        if (!data || !data.profile || !userDetails?._id) {
+            console.error("Shared profile data structure not found in response for share ID:", shareId, response);
+            return null;
+        }
+        
+        // Combine the user details from `profile.userId` and the profile shell from `profile`
+        // so that transformBackendUser can process it correctly.
+        const combinedUserData = {
+            ...userDetails, // has _id, fullName, email
+            role: data.type, // role is at the top level of the data object
+            profile: data.profile, // contains all NGO/Company specific fields
+        };
+
+        return {
+            user: transformBackendUser(combinedUserData),
+            campaigns: (data.campaigns || []).map(transformBackendCampaign),
+            customization: data.customDesign
+        };
+    } catch (error) {
+        console.error(`Error fetching shared profile with ID ${shareId}:`, error);
+        return null;
+    }
+};
+
+export const getSharedCampaign = async (shareId: string): Promise<{ campaign: Campaign } | null> => {
+    try {
+        const response = await request(`/public/share/campaign/${shareId}`);
+        const data = response.data || response;
+
+        if (!data || !data.campaign || !data.campaign._id) {
+            console.error("Shared campaign data structure not found in response for share ID:", shareId, response);
+            return null;
+        }
+
+        return {
+            campaign: transformBackendCampaign(data.campaign),
+        };
+    } catch (error) {
+        console.error(`Error fetching shared campaign with ID ${shareId}:`, error);
+        return null;
+    }
+};
+
 // Backwards compatibility - Legacy function exports
 export const loginUser = authAPI.login;
 export const signupUser = authAPI.signup;
@@ -495,12 +595,15 @@ export const getCampaignById = campaignAPI.getById;
 export const getPublicCampaigns = campaignAPI.getPublic;
 export const getAdminUsers = adminAPI.getAllUsers;
 export const getAdminUserById = adminAPI.getUserById;
-export const approveUser = adminAPI.approveUser;
+export const approveUser = (userId: string) => adminAPI.approveUser(userId, 'approved');
+export const rejectUser = (userId: string) => adminAPI.approveUser(userId, 'rejected');
 export const toggleUserStatus = adminAPI.toggleUserStatus;
 export const createAdminUser = adminAPI.createUser;
 export const updateUser = adminAPI.updateUser;
-export const getAdminCampaigns = adminAPI.getCampaigns;
-export const toggleCampaignStatus = adminAPI.toggleCampaignStatus;
+export const getAdminCampaigns = async () => (await adminAPI.getCampaigns({limit: 1000})).campaigns;
+export const toggleCampaignStatus = (campaign: Campaign) => adminAPI.updateCampaignStatus(campaign._id, !campaign.isActive);
 export const getAdminDashboardStats = adminAPI.getDashboardStats;
 export const updateUserProfile = adminAPI.updateUserProfile;
 export const deleteUser = adminAPI.deleteUser;
+export const getShareablePageDesign = adminAPI.getShareablePageDesign;
+export const updateShareablePageDesign = adminAPI.updateShareablePageDesign;
