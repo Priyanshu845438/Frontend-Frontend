@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FiX, FiUserPlus } from 'react-icons/fi';
 import Button from '../Button.tsx';
 import { createAdminUser } from '../../services/api.ts';
+import { useToast } from '../../context/ToastContext.tsx';
 
 interface CreateUserModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface CreateUserModalProps {
 }
 
 const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onUserCreated }) => {
+    const { addToast } = useToast();
     const [formData, setFormData] = useState({
         fullName: '',
         email: '',
@@ -35,7 +37,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onUs
         setLoading(true);
 
         if (!formData.fullName || !formData.email || !formData.password || !formData.role) {
-            setError('Please fill out all required fields.');
+            const msg = 'Please fill out all required fields.';
+            setError(msg);
+            addToast(msg, 'error');
             setLoading(false);
             return;
         }
@@ -48,9 +52,12 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onUs
 
         try {
             await createAdminUser(userDataToSubmit);
+            addToast('User created successfully!', 'success');
             onUserCreated();
         } catch (err: any) {
-            setError(err.message || 'Failed to create user. Please try again.');
+            const msg = err.message || 'Failed to create user. Please try again.';
+            setError(msg);
+            addToast(msg, 'error');
         } finally {
             setLoading(false);
         }

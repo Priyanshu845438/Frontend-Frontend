@@ -89,6 +89,26 @@ export interface Campaign {
   createdBy?: string | User;
 }
 
+export interface Notice {
+  _id: string;
+  title: string;
+  content: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  targetRole: 'all' | 'ngo' | 'company' | 'donor' | 'admin';
+  targetUsers?: string[];
+  isActive: boolean;
+  sendEmail?: boolean;
+  scheduledAt?: string;
+  createdBy: {
+    _id: string;
+    fullName: string;
+  };
+  createdAt: string;
+  readBy: string[];
+}
+
+
 export interface Testimonial {
   id: number;
   name: string;
@@ -109,9 +129,119 @@ export interface PolicyDocument {
   title: string;
   url: string;
   description: string;
+  category: 'Legal' | 'Financial';
 }
 
 export interface PolicyContent {
   title: string;
   content: string;
+}
+
+export interface UserReportStats {
+  totalUsers: number;
+  roleDistribution: { [key: string]: number };
+  statusDistribution: { [key: string]: number };
+  approvalDistribution: { [key: string]: number };
+  monthlyRegistrations: { [key: string]: number };
+}
+
+export interface CampaignReportSummary {
+    totalCampaigns: number;
+    activeCampaigns: number;
+    approvedCampaigns: number;
+    totalTargetAmount: number;
+    totalRaisedAmount: number;
+    categoryDistribution: { [key: string]: number };
+}
+
+export interface DonationReportSummary {
+    totalDonations: number;
+    totalAmount: number;
+    averageAmount: number;
+    uniqueDonors: number;
+    uniqueCampaigns: number;
+    paymentMethodDistribution: { [key: string]: number };
+    statusDistribution: { [key:string]: number };
+    monthlyTrends: { [key: string]: { count: number; amount: number } };
+}
+
+export interface FinancialReportSummary {
+    summary: {
+      totalAmount: number;
+      totalDonations: number;
+      averageAmount: number;
+    };
+    ngoWiseCollection: {
+        _id: string;
+        ngoName: string;
+        totalAmount: number;
+        totalDonations: number;
+        campaignCount: number;
+    }[];
+    monthlyTrends: {
+        _id: { year: number; month: number };
+        totalAmount: number;
+        totalDonations: number;
+    }[];
+    categoryWiseDistribution: {
+        _id: string;
+        totalAmount: number;
+        totalDonations: number;
+    }[];
+    reportPeriod: {
+        startDate: string;
+        endDate: string;
+    };
+}
+
+export interface Task {
+  _id: string;
+  title: string;
+  description?: string;
+  dueDate: string;
+  dueTime: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'in-progress' | 'completed' | 'cancelled';
+  category: 'meeting' | 'review' | 'approval' | 'maintenance' | 'deadline' | 'other';
+  reminderBefore?: number;
+  isRecurring?: boolean;
+  recurringType?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  recurringEndDate?: string;
+  notes?: string;
+  createdBy: string;
+  reminderSent?: boolean;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  isOverdue?: boolean;
+}
+
+export interface TaskStats {
+    total: number;
+    pending: number;
+    'in-progress': number;
+    completed: number;
+    cancelled: number;
+    overdue: number;
+}
+
+export interface FaqItem {
+    question: string;
+    answer: string;
+    category: 'General' | 'Donors' | 'NGOs & Partners' | 'Technical';
+}
+
+export interface Partner {
+    id: number;
+    name: string;
+    logoUrl: string;
+    type: 'Corporate' | 'Foundation' | 'Institutional';
+}
+
+export interface ImpactStory {
+    id: number;
+    title: string;
+    description: string;
+    imageUrl: string;
+    campaignCategory: string;
 }

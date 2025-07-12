@@ -1,9 +1,15 @@
-
 import React from 'react';
 import Button from '../../components/Button.tsx';
 import { FiSave } from 'react-icons/fi';
+import { useToast } from '../../context/ToastContext.tsx';
 
 const SettingsPage: React.FC = () => {
+  const { addToast } = useToast();
+
+  const handleSave = () => {
+    addToast('This feature is a placeholder. Settings are not saved yet.', 'info');
+  };
+
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Platform Settings</h1>
@@ -39,7 +45,7 @@ const SettingsPage: React.FC = () => {
       </div>
       
       <div className="flex justify-end">
-          <Button><FiSave className="mr-2"/> Save Settings</Button>
+          <Button onClick={handleSave}><FiSave className="mr-2"/> Save Settings</Button>
       </div>
 
       <div className="bg-yellow-100 dark:bg-yellow-900/50 border-l-4 border-yellow-500 text-yellow-700 dark:text-yellow-300 p-4 rounded-md" role="alert">

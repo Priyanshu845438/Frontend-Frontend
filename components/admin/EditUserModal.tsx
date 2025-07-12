@@ -5,6 +5,7 @@ import { FiX, FiEdit } from 'react-icons/fi';
 import Button from '../Button.tsx';
 import { updateUser } from '../../services/api.ts';
 import type { User } from '../../types.ts';
+import { useToast } from '../../context/ToastContext.tsx';
 
 interface EditUserModalProps {
     isOpen: boolean;
@@ -14,6 +15,7 @@ interface EditUserModalProps {
 }
 
 const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onUserUpdated, user }) => {
+    const { addToast } = useToast();
     const [formData, setFormData] = useState<any>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -49,9 +51,12 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onUserUp
 
         try {
             await updateUser(user.id, formData);
+            addToast('User updated successfully!', 'success');
             onUserUpdated();
         } catch (err: any) {
-            setError(err.message || 'Failed to update user. Please try again.');
+            const msg = err.message || 'Failed to update user. Please try again.';
+            setError(msg);
+            addToast(msg, 'error');
         } finally {
             setLoading(false);
         }

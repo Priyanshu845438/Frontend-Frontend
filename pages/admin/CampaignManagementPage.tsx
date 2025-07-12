@@ -7,6 +7,7 @@ import Button from '../../components/Button.tsx';
 import ProgressBar from '../../components/ProgressBar.tsx';
 import DeleteCampaignModal from '../../components/admin/DeleteCampaignModal.tsx';
 import { FiEdit, FiTrash2, FiPlus, FiCheck, FiX, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { useToast } from '../../context/ToastContext.tsx';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -23,6 +24,7 @@ const CampaignManagementPage: React.FC = () => {
   });
   const [deletingCampaign, setDeletingCampaign] = useState<Campaign | null>(null);
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
@@ -31,11 +33,13 @@ const CampaignManagementPage: React.FC = () => {
       setCampaigns(data.campaigns);
       setPagination(data.pagination);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch campaigns.');
+      const msg = err.message || 'Failed to fetch campaigns.';
+      setError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, addToast]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -57,9 +61,10 @@ const CampaignManagementPage: React.FC = () => {
     e.stopPropagation();
     try {
       await adminAPI.approveCampaign(campaignId, status);
+      addToast(`Campaign ${status} successfully.`, 'success');
       fetchCampaigns();
     } catch (err: any) {
-      alert(`Failed to update approval status: ${err.message}`);
+      addToast(`Failed to update approval status: ${err.message}`, 'error');
     }
   };
   
@@ -67,11 +72,12 @@ const CampaignManagementPage: React.FC = () => {
       if (!deletingCampaign) return;
       try {
           await adminAPI.deleteCampaign(deletingCampaign._id);
+          addToast('Campaign deleted successfully.', 'success');
           setDeletingCampaign(null);
           fetchCampaigns();
       } catch (err: any)
       {
-          alert(`Failed to delete campaign: ${err.message}`);
+          addToast(`Failed to delete campaign: ${err.message}`, 'error');
           setDeletingCampaign(null);
       }
   }

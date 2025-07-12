@@ -4,10 +4,12 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { adminAPI } from '../../services/api.ts';
 import type { User, Campaign } from '../../types.ts';
 import Button from '../../components/Button.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { FiSave, FiArrowLeft } from 'react-icons/fi';
 
 const EditCampaignPage: React.FC = () => {
     const { campaignId } = useParams<{ campaignId: string }>();
+    const { addToast } = useToast();
     const [formData, setFormData] = useState<any>({});
     const [ngos, setNgos] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
@@ -21,7 +23,7 @@ const EditCampaignPage: React.FC = () => {
                 const ngoList = await adminAPI.getNgos();
                 setNgos(ngoList);
             } catch (err) {
-                setError('Failed to load NGOs.');
+                addToast('Failed to load NGOs.', 'error');
             }
         };
         
@@ -42,6 +44,7 @@ const EditCampaignPage: React.FC = () => {
                 });
             } catch (err: any) {
                 setError(err.message);
+                addToast(err.message, 'error');
             } finally {
                 setLoading(false);
             }
@@ -49,7 +52,7 @@ const EditCampaignPage: React.FC = () => {
 
         fetchNgos();
         fetchCampaign();
-    }, [campaignId]);
+    }, [campaignId, addToast]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -68,9 +71,12 @@ const EditCampaignPage: React.FC = () => {
 
         try {
             await adminAPI.updateCampaign(campaignId, dataToSubmit);
+            addToast('Campaign updated successfully!', 'success');
             navigate('/admin/campaigns');
         } catch (err: any) {
-            setError(err.message || 'Failed to update campaign.');
+            const msg = err.message || 'Failed to update campaign.';
+            setError(msg);
+            addToast(msg, 'error');
         } finally {
             setSaving(false);
         }

@@ -5,10 +5,12 @@ import { adminAPI } from '../../services/api.ts';
 import type { User } from '../../types.ts';
 import Button from '../../components/Button.tsx';
 import { AuthContext } from '../../context/AuthContext.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { FiSave, FiArrowLeft } from 'react-icons/fi';
 
 const CreateCampaignPage: React.FC = () => {
     const { user: adminUser } = useContext(AuthContext);
+    const { addToast } = useToast();
     const [formData, setFormData] = useState<any>({
         title: '',
         campaignName: '',
@@ -37,11 +39,13 @@ const CreateCampaignPage: React.FC = () => {
                 const ngoList = await adminAPI.getNgos();
                 setNgos(ngoList);
             } catch (err) {
-                setError('Failed to load NGOs.');
+                const msg = 'Failed to load NGOs.';
+                setError(msg);
+                addToast(msg, 'error');
             }
         };
         fetchNgos();
-    }, []);
+    }, [addToast]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -55,7 +59,9 @@ const CreateCampaignPage: React.FC = () => {
         setLoading(true);
 
         if (!adminUser?._id) {
-            setError('Could not identify the admin user. Please log in again.');
+            const msg = 'Could not identify the admin user. Please log in again.';
+            setError(msg);
+            addToast(msg, 'error');
             setLoading(false);
             return;
         }
@@ -69,9 +75,12 @@ const CreateCampaignPage: React.FC = () => {
 
         try {
             await adminAPI.createCampaign(dataToSubmit);
+            addToast('Campaign created successfully!', 'success');
             navigate('/admin/campaigns');
         } catch (err: any) {
-            setError(err.message || 'Failed to create campaign.');
+            const msg = err.message || 'Failed to create campaign.';
+            setError(msg);
+            addToast(msg, 'error');
         } finally {
             setLoading(false);
         }

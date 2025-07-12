@@ -6,6 +6,7 @@ import type { Campaign } from '../types.ts';
 import Button from '../components/Button.tsx';
 import { FiCreditCard } from 'react-icons/fi';
 import { useLocation } from 'react-router-dom';
+import { useToast } from '../context/ToastContext.tsx';
 
 const DonatePage: React.FC = () => {
   const [amount, setAmount] = useState(1000);
@@ -14,6 +15,7 @@ const DonatePage: React.FC = () => {
   const [claim80G, setClaim80G] = useState(true);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const location = useLocation();
+  const { addToast } = useToast();
 
   useEffect(() => {
     const fetchCampaigns = async () => {
@@ -50,7 +52,7 @@ const DonatePage: React.FC = () => {
   const handleDonationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // In a real app, this would call a payment gateway API
-    alert(`Thank you for your donation of ₹${amount} to ${campaigns.find(c => c._id === selectedCampaign)?.title || 'the General Fund'}!`);
+    addToast(`Thank you for your donation of ₹${amount} to ${campaigns.find(c => c._id === selectedCampaign)?.title || 'the General Fund'}!`, 'success');
   };
 
   const platformFee = Math.round(amount * 0.05);

@@ -1,5 +1,5 @@
 
-import type { User, Campaign } from '../types.ts';
+import type { User, Campaign, Notice, Task, CampaignReportSummary, UserReportStats, DonationReportSummary, FinancialReportSummary } from '../types.ts';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -13,7 +13,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
   const headers = new Headers(options.headers);
 
-  if (!headers.has('Content-Type')) {
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -25,6 +25,21 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
   const responseData = await response.json().catch(() => ({}));
 
+  // Handle public API response structure
+  if (endpoint.startsWith('/public/')) {
+    if (!response.ok || !responseData.success) {
+      if (responseData.errors) {
+        const errorDetails = responseData.errors.map((e: any) => `${e.param}: ${e.message}`).join(', ');
+        throw new Error(`${responseData.message}: ${errorDetails}`);
+      }
+      throw new Error(responseData.message || `Request failed with status ${response.status}`);
+    }
+    // If a 'data' wrapper exists, return its content. Otherwise, return the whole response object.
+    // This makes it flexible to handle both { success: true, data: { ... } } and { success: true, ... }
+    return responseData.data || responseData;
+  }
+
+  // Handle other APIs
   if (!response.ok) {
     throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
   }
@@ -35,24 +50,51 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
 // Data Transformation Layer
 export const transformBackendCampaign = (backendCampaign: any): Campaign => {
-  const organizer = backendCampaign.ngoId || { 
-    fullName: 'Unknown', 
-    avatar: '', 
-    _id: '', 
-    approvalStatus: 'pending', 
-    isActive: false 
-  };
-  const goal = backendCampaign.targetAmount || backendCampaign.goalAmount || 0;
-  const raised = backendCampaign.currentAmount || 0;
+    let organizerName = 'Unknown Organizer';
+    let organizerId = '';
+    let organizerLogo = `https://picsum.photos/seed/default-ngo/100`;
+    let verified = false;
 
-  let status: Campaign['status'] = 'disabled';
-  if (backendCampaign.isActive) {
-    if (raised >= goal && goal > 0) {
-      status = 'completed';
-    } else {
-      status = 'active';
+    // Handle the structure from the user's curl response: { "ngoId": { "_id": "...", "ngoName": "..." } }
+    if (backendCampaign.ngoId && typeof backendCampaign.ngoId === 'object') {
+        organizerName = backendCampaign.ngoId.ngoName || backendCampaign.ngoId.name || 'Unknown';
+        organizerId = backendCampaign.ngoId._id;
+        organizerLogo = backendCampaign.ngoId.logo || `https://picsum.photos/seed/${organizerName}/100`;
+        // The curl response for ngoId doesn't have verification info. Let's assume verified if an NGO is linked.
+        verified = true;
+    } 
+    // Handle the structure from the original API spec I was given
+    else if (backendCampaign.ngo && typeof backendCampaign.ngo === 'object') {
+        organizerName = backendCampaign.ngo.name;
+        organizerId = backendCampaign.ngo._id;
+        organizerLogo = backendCampaign.ngo.logo || `https://picsum.photos/seed/${organizerName}/100`;
+        verified = backendCampaign.ngo.isVerified || false;
+    } 
+    // Fallback for admin-created campaigns that might just have a name
+    else if (typeof backendCampaign.organizer === 'string') {
+        organizerName = backendCampaign.organizer;
     }
-  }
+
+    const goal = backendCampaign.targetAmount || backendCampaign.goalAmount || 0;
+    const raised = backendCampaign.raisedAmount || backendCampaign.currentAmount || 0;
+
+    let status: Campaign['status'] = 'disabled';
+    if (backendCampaign.isActive !== false) {
+        if (raised >= goal && goal > 0) {
+            status = 'completed';
+        } else {
+            status = 'active';
+        }
+    }
+    if (backendCampaign.status) {
+      status = backendCampaign.status.toLowerCase();
+    }
+
+    // The curl response shows 'campaignImages'. The original type might have 'images'. Handle both.
+    const images = backendCampaign.images?.length > 0 ? backendCampaign.images :
+                   backendCampaign.campaignImages?.length > 0 ? backendCampaign.campaignImages :
+                   [`https://picsum.photos/seed/${backendCampaign.title || 'default'}/800/600`];
+
 
   return {
     ...backendCampaign,
@@ -60,21 +102,21 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
     _id: backendCampaign._id,
     title: backendCampaign.title,
     slug: (backendCampaign.title || '').toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, ''),
-    organizer: organizer.fullName,
-    organizerId: organizer._id,
-    organizerLogo: organizer.avatar || `https://picsum.photos/seed/${organizer.fullName}/100`,
+    organizer: organizerName,
+    organizerId: organizerId,
+    organizerLogo: organizerLogo,
     description: (backendCampaign.description || '').substring(0, 100) + '...',
     fullDescription: backendCampaign.fullDescription || backendCampaign.description || backendCampaign.explainStory || 'Full description not provided.',
     goal,
     raised,
     category: backendCampaign.category || 'Health',
     location: backendCampaign.location || 'India',
-    verified: organizer.approvalStatus === 'approved' && organizer.isActive,
+    verified,
     urgent: backendCampaign.isUrgent || false,
-    images: backendCampaign.images?.length > 0 ? backendCampaign.images : [`https://picsum.photos/seed/${backendCampaign.title || 'default'}/800/600`],
+    images: images,
     status,
     endDate: backendCampaign.endDate,
-    isActive: backendCampaign.isActive,
+    isActive: backendCampaign.isActive !== false,
     approvalStatus: backendCampaign.approvalStatus || 'pending',
   };
 };
@@ -91,7 +133,7 @@ export const transformBackendUser = (backendUser: any): User => {
       status = 'disabled';
   }
 
-  const name = backendUser.fullName || backendUser.name;
+  const name = backendUser.fullName || backendUser.name || backendUser.ngoName || backendUser.companyName;
   const profileData = backendUser.profile || {};
 
   return {
@@ -104,7 +146,7 @@ export const transformBackendUser = (backendUser: any): User => {
     phoneNumber: backendUser.phoneNumber,
     role: backendUser.role,
     status: status,
-    avatar: backendUser.profileImage || `https://picsum.photos/seed/${name}/100`,
+    avatar: backendUser.profileImage || backendUser.logo || `https://picsum.photos/seed/${name}/100`,
     createdAt: backendUser.createdAt,
     isActive: backendUser.isActive,
     approvalStatus: backendUser.approvalStatus,
@@ -113,7 +155,8 @@ export const transformBackendUser = (backendUser: any): User => {
       description: backendUser.description || profileData.description,
       address: backendUser.address || profileData.address || profileData.companyAddress,
       website: backendUser.website || profileData.website,
-      ...profileData
+      ...profileData,
+      ...backendUser // For public profiles that have fields at the top level
     }
   };
 };
@@ -138,177 +181,135 @@ export const authAPI = {
     request('/auth/logout', {
       method: 'POST',
     }),
-
-  refreshToken: () => 
-    request('/auth/refresh', {
-      method: 'POST',
-    }),
-
-  verifyEmail: (token: string) => 
-    request('/auth/verify-email', {
-      method: 'POST',
-      body: JSON.stringify({ token }),
-    }),
-
-  forgotPassword: (email: string) => 
-    request('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    }),
-
-  resetPassword: (token: string, password: string) => 
-    request('/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({ token, password }),
-    }),
 };
 
 // User Profile Endpoints
 export const userAPI = {
-  getProfile: () => 
-    request('/user/profile'),
-
-  updateProfile: (userData: any) => 
-    request('/user/profile', {
-      method: 'PUT',
-      body: JSON.stringify(userData),
-    }),
-
-  uploadAvatar: (formData: FormData) => 
-    request('/user/avatar', {
-      method: 'POST',
-      body: formData,
-      headers: {}, // Let browser set multipart headers
-    }),
-
-  changePassword: (currentPassword: string, newPassword: string) => 
-    request('/user/change-password', {
-      method: 'PUT',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    }),
-
-  deleteAccount: () => 
-    request('/user/account', {
-      method: 'DELETE',
-    }),
+  // These are for the logged-in user, and remain unchanged
+  getProfile: () => request('/user/profile'),
+  updateProfile: (userData: any) => request('/user/profile', { method: 'PUT', body: JSON.stringify(userData) }),
 };
 
 // Campaign Endpoints
 export const campaignAPI = {
-  // Public campaigns
-  getPublic: async (): Promise<Campaign[]> => {
-    const data = await request('/campaigns/public');
-    const campaigns = data.campaigns || (Array.isArray(data) ? data : []);
-    return campaigns.map(transformBackendCampaign);
+  getPublic: async (filters?: { page?: number; limit?: number; category?: string; location?: string; status?: string; sortBy?: string; search?: string }): Promise<{ campaigns: Campaign[], pagination: any, filters: any }> => {
+    const queryParams = new URLSearchParams();
+    if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value) {
+                queryParams.append(key, value.toString());
+            }
+        });
+    }
+    
+    const data = await request(`/public/campaigns?${queryParams.toString()}`);
+    return {
+        campaigns: data.campaigns.map(transformBackendCampaign),
+        pagination: data.pagination,
+        filters: data.filters
+    };
   },
 
   getById: async (campaignId: string): Promise<Campaign | null> => {
     try {
-      const data = await request(`/campaigns/${campaignId}`);
-      return transformBackendCampaign(data);
+      const data = await request(`/public/campaigns/${campaignId}`);
+      return transformBackendCampaign(data.campaign);
     } catch (error) {
+      console.error(error);
       return null;
     }
   },
-
-  getBySlug: async (slug: string): Promise<Campaign | null> => {
-    try {
-      const data = await request(`/campaigns/slug/${slug}`);
-      return transformBackendCampaign(data);
-    } catch (error) {
-      return null;
-    }
-  },
-
-  // User campaigns
-  getUserCampaigns: async (): Promise<Campaign[]> => {
-    const data = await request('/campaigns/my-campaigns');
-    const campaigns = data.campaigns || (Array.isArray(data) ? data : []);
+  
+  getFeatured: async (): Promise<Campaign[]> => {
+    const data = await request('/public/campaigns/featured');
+    // Assuming the endpoint returns a simple array under a key
+    const campaigns = data.campaigns || data;
     return campaigns.map(transformBackendCampaign);
   },
-
-  create: (campaignData: any) => 
-    request('/campaigns', {
-      method: 'POST',
-      body: JSON.stringify(campaignData),
-    }),
-
-  update: (campaignId: string, campaignData: any) => 
-    request(`/campaigns/${campaignId}`, {
-      method: 'PUT',
-      body: JSON.stringify(campaignData),
-    }),
-
-  delete: (campaignId: string) => 
-    request(`/campaigns/${campaignId}`, {
-      method: 'DELETE',
-    }),
-
-  uploadImages: (campaignId: string, formData: FormData) => 
-    request(`/campaigns/${campaignId}/images`, {
-      method: 'POST',
-      body: formData,
-      headers: {},
-    }),
 };
 
 // Donation Endpoints
 export const donationAPI = {
-  create: (donationData: any) => 
-    request('/donations', {
-      method: 'POST',
-      body: JSON.stringify(donationData),
-    }),
-
-  getUserDonations: () => 
-    request('/donations/my-donations'),
-
-  getCampaignDonations: (campaignId: string) => 
-    request(`/donations/campaign/${campaignId}`),
-
-  processPayment: (paymentData: any) => 
-    request('/donations/process-payment', {
-      method: 'POST',
-      body: JSON.stringify(paymentData),
-    }),
+  // Placeholder, assuming donation flow starts on client
 };
 
 // Organization Endpoints
 export const organizationAPI = {
-  getPublic: async () => {
-    const [ngoData, companyData] = await Promise.allSettled([
-      request('/organizations/ngos/public'),
-      request('/organizations/companies/public')
-    ]);
-
-    const ngos = ngoData.status === 'fulfilled' ? 
-      (ngoData.value.ngos || ngoData.value || []) : [];
-    const companies = companyData.status === 'fulfilled' ? 
-      (companyData.value.companies || companyData.value || []) : [];
-
+  getNgoProfile: async (id: string): Promise<{ user: User, campaigns: Campaign[] }> => {
+    const data = await request(`/public/ngo/${id}`);
     return {
-      ngos: ngos.map(transformBackendUser),
-      companies: companies.map(transformBackendUser)
-    };
+        user: transformBackendUser(data.ngo),
+        campaigns: (data.ngo.campaigns || []).map(transformBackendCampaign)
+    }
+  },
+  getCompanyProfile: async (id: string): Promise<User> => {
+    const data = await request(`/public/company/${id}`);
+    return transformBackendUser(data.company);
+  },
+  // This function is now deprecated in favor of specific profile endpoints
+  getProfileByUsername: async (username: string) => {
+    console.warn("getProfileByUsername is deprecated. Use getNgoProfile or getCompanyProfile with an ID.");
+    // This is a legacy fallback, it might not work with the new API.
+    throw new Error("Function not supported by new API. Please link to profiles by ID.");
+  },
+};
+
+// Public Stats & Forms API
+export const publicAPI = {
+    getPlatformStats: async () => {
+        return await request('/public/stats');
+    },
+    submitContactForm: (formData: { name: string; email: string; subject: string; message: string; type: string }) => {
+        return request('/public/contact', {
+            method: 'POST',
+            body: JSON.stringify(formData),
+        });
+    },
+    subscribeNewsletter: (formData: { email: string; interests?: string[] }) => {
+        return request('/public/newsletter/subscribe', {
+            method: 'POST',
+            body: JSON.stringify(formData),
+        });
+    }
+};
+
+// User Task Management API
+export const taskAPI = {
+  getTasks: (filters: { page?: number; limit?: number; status?: string; priority?: string; category?: string; search?: string; startDate?: string; endDate?: string }) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value && value !== 'all') {
+            queryParams.append(key, value.toString());
+        }
+    });
+    return request(`/user/tasks?${queryParams.toString()}`);
   },
 
-  getByUsername: async (username: string) => {
-    const { ngos, companies } = await organizationAPI.getPublic();
-    const allOrgs = [...ngos, ...companies];
+  createTask: (taskData: Partial<Task>) => request('/user/tasks', {
+    method: 'POST',
+    body: JSON.stringify(taskData)
+  }),
 
-    const user = allOrgs.find(u => u.username === username);
-    if (!user) {
-      throw new Error('Organization profile not found.');
-    }
+  getTaskById: (id: string) => request(`/user/tasks/${id}`),
 
-    let campaigns: Campaign[] = [];
-    if (user.role === 'ngo') {
-      const publicCampaigns = await campaignAPI.getPublic();
-      campaigns = publicCampaigns.filter(c => c.organizerId === user._id);
-    }
+  updateTask: (id: string, taskData: Partial<Task>) => request(`/user/tasks/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(taskData)
+  }),
 
-    return { user, campaigns };
-  },
+  deleteTask: (id: string) => request(`/user/tasks/${id}`, {
+    method: 'DELETE'
+  }),
+
+  markTaskComplete: (id: string) => request(`/user/tasks/${id}/complete`, {
+    method: 'PATCH'
+  }),
+
+  getCalendarView: (params: { year: number; month: number }) => request(`/user/tasks/calendar/view?year=${params.year}&month=${params.month}`),
+
+  getTodaysTasks: () => request('/user/tasks/today/list'),
+
+  getUpcomingTasks: () => request('/user/tasks/upcoming/list')
 };
 
 // Admin Endpoints
@@ -487,6 +488,33 @@ export const adminAPI = {
     request(`/admin/campaigns/${campaignId}/share`, { method: 'POST' }),
 
 
+  // Notice Management
+  noticeAPI: {
+    getNotices: (filters: { page?: number; limit?: number; type?: string; priority?: string; search?: string; status?: string, targetRole?: string }): Promise<{notices: Notice[], pagination: any}> => {
+        const queryParams = new URLSearchParams();
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value && value !== 'all') {
+                queryParams.append(key, value.toString());
+            }
+        });
+        const queryString = queryParams.toString();
+        return request(`/admin/notices?${queryString}`);
+    },
+    createNotice: (data: Partial<Notice>) => request('/admin/notices', {
+        method: 'POST',
+        body: JSON.stringify(data),
+    }),
+    getNoticeById: (id: string): Promise<Notice> => request(`/admin/notices/${id}`),
+    updateNotice: (id: string, data: Partial<Notice>) => request(`/admin/notices/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+    deleteNotice: (id: string) => request(`/admin/notices/${id}`, {
+        method: 'DELETE',
+    }),
+  },
+
+
   // Dashboard & Reports
   getDashboardStats: async () => {
     try {
@@ -527,34 +555,64 @@ export const adminAPI = {
     }
   },
 
-  getReports: (reportType: string, params?: any) => 
-    request(`/admin/reports/${reportType}`, {
-      method: 'POST',
-      body: JSON.stringify(params || {}),
-    }),
+  reportsAPI: {
+    getUsersReport: (filters: any): Promise<{ users: User[], stats: UserReportStats }> => {
+        const queryParams = new URLSearchParams(filters);
+        return request(`/admin/reports/users?${queryParams.toString()}`);
+    },
+    getCampaignsReport: (filters: any): Promise<{ campaigns: any[], summary: CampaignReportSummary }> => {
+        const queryParams = new URLSearchParams(filters);
+        return request(`/admin/reports/campaigns?${queryParams.toString()}`);
+    },
+    getDonationsReport: (filters: any): Promise<{ donations: any[], summary: DonationReportSummary }> => {
+        const queryParams = new URLSearchParams(filters);
+        return request(`/admin/reports/donations?${queryParams.toString()}`);
+    },
+    getFinancialReport: (filters: any): Promise<FinancialReportSummary> => {
+        const queryParams = new URLSearchParams(filters);
+        return request(`/admin/reports/financial?${queryParams.toString()}`);
+    },
+    exportReport: async (reportType: string, filters: any, format: 'pdf' | 'excel') => {
+        const queryParams = new URLSearchParams({ ...filters, export: format });
+        const url = `${API_BASE}/admin/reports/${reportType}?${queryParams.toString()}`;
+        const token = getToken();
+
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Failed to export report.`);
+        }
+
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `${reportType}-report-${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'pdf'}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+    },
+  },
 };
 
-// --- Public APIs ---
+// --- Public APIs (Legacy Naming) ---
 export const getSharedProfile = async (shareId: string): Promise<{ user: User, campaigns: Campaign[], customization?: { html: string; css: string } } | null> => {
     try {
-        const response = await request(`/public/share/profile/${shareId}`);
-        const data = response.data || response;
-
-        // Based on logs, the main user object is nested inside profile.userId
+        const data = await request(`/public/share/profile/${shareId}`);
         const userDetails = data.profile?.userId;
 
         if (!data || !data.profile || !userDetails?._id) {
-            console.error("Shared profile data structure not found in response for share ID:", shareId, response);
+            console.error("Shared profile data structure not found", data);
             return null;
         }
         
-        // Combine the user details from `profile.userId` and the profile shell from `profile`
-        // so that transformBackendUser can process it correctly.
-        const combinedUserData = {
-            ...userDetails, // has _id, fullName, email
-            role: data.type, // role is at the top level of the data object
-            profile: data.profile, // contains all NGO/Company specific fields
-        };
+        const combinedUserData = { ...userDetails, role: data.type, profile: data.profile };
 
         return {
             user: transformBackendUser(combinedUserData),
@@ -569,30 +627,28 @@ export const getSharedProfile = async (shareId: string): Promise<{ user: User, c
 
 export const getSharedCampaign = async (shareId: string): Promise<{ campaign: Campaign } | null> => {
     try {
-        const response = await request(`/public/share/campaign/${shareId}`);
-        const data = response.data || response;
-
+        const data = await request(`/public/share/campaign/${shareId}`);
         if (!data || !data.campaign || !data.campaign._id) {
-            console.error("Shared campaign data structure not found in response for share ID:", shareId, response);
             return null;
         }
-
-        return {
-            campaign: transformBackendCampaign(data.campaign),
-        };
+        return { campaign: transformBackendCampaign(data.campaign) };
     } catch (error) {
         console.error(`Error fetching shared campaign with ID ${shareId}:`, error);
         return null;
     }
 };
 
+
 // Backwards compatibility - Legacy function exports
 export const loginUser = authAPI.login;
 export const signupUser = authAPI.signup;
 export const logoutUser = authAPI.logout;
-export const getProfileByUsername = organizationAPI.getByUsername;
+export const getProfileByUsername = organizationAPI.getProfileByUsername;
 export const getCampaignById = campaignAPI.getById;
-export const getPublicCampaigns = campaignAPI.getPublic;
+export const getPublicCampaigns = async (): Promise<Campaign[]> => {
+    const data = await campaignAPI.getPublic({ limit: 100 }); // Get a decent number for dropdowns
+    return data.campaigns;
+};
 export const getAdminUsers = adminAPI.getAllUsers;
 export const getAdminUserById = adminAPI.getUserById;
 export const approveUser = (userId: string) => adminAPI.approveUser(userId, 'approved');

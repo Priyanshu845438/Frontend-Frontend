@@ -7,6 +7,7 @@ import type { User, Campaign } from '../../types.ts';
 import Button from '../../components/Button.tsx';
 import CampaignCard from '../../components/CampaignCard.tsx';
 import ShareProfileModal from '../../components/admin/ShareProfileModal.tsx';
+import { useToast } from '../../context/ToastContext.tsx';
 import { FiMail, FiPhone, FiCalendar, FiCheck, FiToggleLeft, FiToggleRight, FiArrowLeft, FiDollarSign, FiHeart, FiActivity, FiBriefcase, FiUser, FiUsers, FiInfo, FiAward, FiShield, FiTag, FiCreditCard, FiHome, FiMapPin, FiGlobe, FiEdit, FiSave, FiShare2, FiPenTool } from 'react-icons/fi';
 
 const statusBadge = (status: User['status']) => {
@@ -81,6 +82,7 @@ const UserProfilePage: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [formData, setFormData] = useState<any>({});
+    const { addToast } = useToast();
 
     const fetchUser = async () => {
         if (!userId) return;
@@ -92,6 +94,7 @@ const UserProfilePage: React.FC = () => {
             setProfileData(data);
         } catch (err: any) {
             setError(err.message || 'Failed to fetch user data.');
+            addToast(err.message || 'Failed to fetch user data.', 'error');
         } finally {
             setLoading(false);
         }
@@ -135,10 +138,11 @@ const UserProfilePage: React.FC = () => {
         setIsSaving(true);
         try {
             await updateUserProfile(userId, formData);
+            addToast('Profile updated successfully!', 'success');
             await fetchUser();
             setIsEditMode(false);
         } catch (err: any) {
-            alert(`Failed to update profile: ${err.message}`);
+            addToast(`Failed to update profile: ${err.message}`, 'error');
         } finally {
             setIsSaving(false);
         }
@@ -149,9 +153,10 @@ const UserProfilePage: React.FC = () => {
         if (!profileData?.user) return;
         try {
             await approveUser(profileData.user.id);
+            addToast('User approved successfully.', 'success');
             fetchUser();
         } catch (err: any) {
-            alert(`Failed to approve user: ${err.message}`);
+            addToast(`Failed to approve user: ${err.message}`, 'error');
         }
     };
 
@@ -159,9 +164,10 @@ const UserProfilePage: React.FC = () => {
         if (!profileData?.user) return;
         try {
             await toggleUserStatus(profileData.user);
+            addToast('User status updated successfully.', 'success');
             fetchUser();
         } catch (err: any) {
-            alert(`Failed to change status: ${err.message}`);
+            addToast(`Failed to change status: ${err.message}`, 'error');
         }
     };
 
