@@ -18,6 +18,34 @@ export interface User {
     description?: string;
     address?: string;
     website?: string;
+    // NGO specific
+    registrationNumber?: string;
+    registeredYear?: string;
+    numberOfEmployees?: number;
+    ngoType?: string;
+    panNumber?: string;
+    tanNumber?: string;
+    gstNumber?: string;
+    is80GCertified?: boolean;
+    is12ACertified?: boolean;
+    authorizedPerson?: {
+        name?: string;
+        phone?: string;
+        email?: string;
+    };
+    bankDetails?: {
+        accountHolderName?: string;
+        accountNumber?: string;
+        ifscCode?: string;
+        bankName?: string;
+        branchName?: string;
+    };
+    // Company specific
+    companyAddress?: string;
+    companyType?: string;
+    ceoName?: string;
+    ceoContactNumber?: string;
+    ceoEmail?: string;
   };
 }
 

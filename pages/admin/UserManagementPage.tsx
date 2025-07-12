@@ -1,23 +1,27 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAdminUsers, approveUser, toggleUserStatus } from '../../services/api.ts';
+import { getAdminUsers, approveUser, toggleUserStatus, deleteUser } from '../../services/api.ts';
 import type { User } from '../../types.ts';
 import Button from '../../components/Button.tsx';
 import { FiEdit, FiTrash2, FiCheck, FiPlus, FiToggleLeft, FiToggleRight, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import CreateUserModal from '../../components/admin/CreateUserModal.tsx';
+import EditUserModal from '../../components/admin/EditUserModal.tsx';
+import DeleteUserModal from '../../components/admin/DeleteUserModal.tsx';
 
 const USERS_PER_PAGE = 10;
 
 const UserManagementPage: React.FC = () => {
-  const [Users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [sortOption, setSortOption] = useState('latest');
   const [currentPage, setCurrentPage] = useState(1);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const navigate = useNavigate();
   
   const fetchUsers = async () => {
@@ -39,12 +43,12 @@ const UserManagementPage: React.FC = () => {
   }, []);
 
   const processedUsers = useMemo(() => {
-    let filtered = Users
-      .filter(User => 
-        (User.name || '').toLowerCase().includes(filter.toLowerCase()) ||
-        (User.email || '').toLowerCase().includes(filter.toLowerCase())
+    let filtered = users
+      .filter(user => 
+        (user.name || '').toLowerCase().includes(filter.toLowerCase()) ||
+        (user.email || '').toLowerCase().includes(filter.toLowerCase())
       )
-      .filter(User => roleFilter === 'all' || User.role === roleFilter);
+      .filter(user => roleFilter === 'all' || user.role === roleFilter);
 
     return [...filtered].sort((a, b) => {
         switch (sortOption) {
@@ -56,7 +60,7 @@ const UserManagementPage: React.FC = () => {
                 return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
         }
     });
-  }, [Users, filter, roleFilter, sortOption]);
+  }, [users, filter, roleFilter, sortOption]);
 
   const paginatedUsers = useMemo(() => {
     const startIndex = (currentPage - 1) * USERS_PER_PAGE;
@@ -75,14 +79,26 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
-  const handleToggleStatus = async (e: React.MouseEvent, User: User) => {
+  const handleToggleStatus = async (e: React.MouseEvent, user: User) => {
     e.stopPropagation();
      try {
-         await toggleUserStatus(User);
+         await toggleUserStatus(user);
          fetchUsers();
      } catch (err: any) {
          alert(`Failed to change status: ${err.message}`);
      }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingUser) return;
+    try {
+      await deleteUser(deletingUser.id);
+      fetchUsers();
+      setDeletingUser(null);
+    } catch (err: any) {
+      alert(`Failed to delete user: ${err.message}`);
+      setDeletingUser(null);
+    }
   };
 
   const statusBadge = (status: User['status']) => {
@@ -127,7 +143,7 @@ const UserManagementPage: React.FC = () => {
               <option value="a-z">Sort: A-Z</option>
               <option value="z-a">Sort: Z-A</option>
           </select>
-          <Button onClick={() => setIsModalOpen(true)}>
+          <Button onClick={() => setIsCreateModalOpen(true)}>
             <FiPlus className="mr-2" /> Create User
           </Button>
       </div>
@@ -148,42 +164,42 @@ const UserManagementPage: React.FC = () => {
             {loading && <tr><td colSpan={6} className="text-center p-4">Loading users...</td></tr>}
             {error && <tr><td colSpan={6} className="text-center p-4 text-red-500">{error}</td></tr>}
             {!loading && paginatedUsers.length === 0 && <tr><td colSpan={6} className="text-center p-4">No users found.</td></tr>}
-            {!loading && !error && paginatedUsers.map(User => (
-              <tr key={User.id} onClick={() => navigate(`/admin/users/${User.id}`)} className="hover:bg-gray-50 dark:hover:bg-brand-dark cursor-pointer">
+            {!loading && !error && paginatedUsers.map(user => (
+              <tr key={user.id} onClick={() => navigate(`/admin/users/${user.id}`)} className="hover:bg-gray-50 dark:hover:bg-brand-dark cursor-pointer">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
-                    <img className="h-10 w-10 rounded-full" src={User.avatar} alt={User.name} />
+                    <img className="h-10 w-10 rounded-full" src={user.avatar} alt={user.name} />
                     <div className="ml-4">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">{User.name}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">{User.email}</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">{user.name}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{User.phoneNumber || 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 capitalize">{User.role}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{user.phoneNumber || 'N/A'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 capitalize">{user.role}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={statusBadge(User.status)}>{User.status}</span>
+                  <span className={statusBadge(user.status)}>{user.status}</span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Date(User.createdAt).toLocaleDateString()}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Date(user.createdAt).toLocaleDateString()}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex justify-end items-center gap-2">
-                    {User.approvalStatus === 'pending' && (
-                        <Button onClick={(e) => handleApprove(e, User.id)} variant="ghost" className="p-2 text-green-500" title="Approve User">
+                    {user.approvalStatus === 'pending' && (
+                        <Button onClick={(e) => handleApprove(e, user.id)} variant="ghost" className="p-2 text-green-500" title="Approve User">
                             <FiCheck />
                         </Button>
                     )}
-                    {User.role !== 'admin' && User.approvalStatus === 'approved' && (
+                    {user.role !== 'admin' && user.approvalStatus === 'approved' && (
                         <Button 
-                            onClick={(e) => handleToggleStatus(e, User)} 
+                            onClick={(e) => handleToggleStatus(e, user)} 
                             variant="ghost" 
-                            className={`p-2 ${User.isActive ? 'text-green-500' : 'text-red-500'}`}
-                            title={User.isActive ? 'Disable User' : 'Enable User'}
+                            className={`p-2 ${user.isActive ? 'text-green-500' : 'text-red-500'}`}
+                            title={user.isActive ? 'Disable User' : 'Enable User'}
                         >
-                            {User.isActive ? <FiToggleRight size={20} /> : <FiToggleLeft size={20} />}
+                            {user.isActive ? <FiToggleRight size={20} /> : <FiToggleLeft size={20} />}
                         </Button>
                     )}
-                    <Button onClick={(e) => {e.stopPropagation(); alert('Edit clicked');}} variant="ghost" className="p-2 text-blue-500" title="Edit User"><FiEdit /></Button>
-                    {User.role !== 'admin' && <Button onClick={(e) => {e.stopPropagation(); alert('Delete clicked');}} variant="ghost" className="p-2 text-red-500" title="Delete User"><FiTrash2 /></Button>}
+                    <Button onClick={(e) => { e.stopPropagation(); setEditingUser(user); }} variant="ghost" className="p-2 text-blue-500" title="Edit User"><FiEdit /></Button>
+                    {user.role !== 'admin' && <Button onClick={(e) => {e.stopPropagation(); setDeletingUser(user);}} variant="ghost" className="p-2 text-red-500" title="Delete User"><FiTrash2 /></Button>}
                   </div>
                 </td>
               </tr>
@@ -207,12 +223,27 @@ const UserManagementPage: React.FC = () => {
         </div>
       )}
       <CreateUserModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
         onUserCreated={() => {
             fetchUsers();
-            setIsModalOpen(false);
+            setIsCreateModalOpen(false);
         }}
+      />
+      <EditUserModal
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        onUserUpdated={() => {
+            fetchUsers();
+            setEditingUser(null);
+        }}
+        user={editingUser}
+      />
+      <DeleteUserModal
+        isOpen={!!deletingUser}
+        onClose={() => setDeletingUser(null)}
+        onConfirm={handleDeleteConfirm}
+        user={deletingUser}
       />
     </div>
   );
