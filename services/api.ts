@@ -1,7 +1,10 @@
 
-import type { User, Campaign, Notice, Task, CampaignReportSummary, UserReportStats, DonationReportSummary, FinancialReportSummary } from '../types.ts';
+import type { User, Campaign, Notice, Task, Donation, DashboardData, SystemHealth, SecurityDashboardData } from './types.ts';
 
 const API_BASE = 'http://localhost:5000/api';
+export const API_SERVER_URL = 'http://localhost:5000';
+export const DEFAULT_IMAGE_URL = `${API_SERVER_URL}/uploads/default-image.jpeg`;
+
 
 // Helper to get token from localStorage
 const getToken = () => localStorage.getItem('authToken');
@@ -25,21 +28,6 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
   const responseData = await response.json().catch(() => ({}));
 
-  // Handle public API response structure
-  if (endpoint.startsWith('/public/')) {
-    if (!response.ok || !responseData.success) {
-      if (responseData.errors) {
-        const errorDetails = responseData.errors.map((e: any) => `${e.param}: ${e.message}`).join(', ');
-        throw new Error(`${responseData.message}: ${errorDetails}`);
-      }
-      throw new Error(responseData.message || `Request failed with status ${response.status}`);
-    }
-    // If a 'data' wrapper exists, return its content. Otherwise, return the whole response object.
-    // This makes it flexible to handle both { success: true, data: { ... } } and { success: true, ... }
-    return responseData.data || responseData;
-  }
-
-  // Handle other APIs
   if (!response.ok) {
     throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
   }
@@ -47,54 +35,45 @@ async function request(endpoint: string, options: RequestInit = {}) {
   return responseData;
 }
 
+const makeAbsoluteUrl = (path?: string | null): string => {
+    if (!path || path.trim() === '') {
+        return DEFAULT_IMAGE_URL;
+    }
+    // If it's a data URL or already absolute, return as is.
+    if (path.startsWith('http') || path.startsWith('data:')) {
+        return path;
+    }
+    const cleanedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${API_SERVER_URL}${cleanedPath}`;
+};
+
 
 // Data Transformation Layer
 export const transformBackendCampaign = (backendCampaign: any): Campaign => {
-    let organizerName = 'Unknown Organizer';
-    let organizerId = '';
-    let organizerLogo = `https://picsum.photos/seed/default-ngo/100`;
-    let verified = false;
+  const organizer = backendCampaign.ngoId || { 
+    fullName: 'Unknown', 
+    avatar: '', 
+    _id: '', 
+    approvalStatus: 'pending', 
+    isActive: false 
+  };
+  const goal = backendCampaign.targetAmount || backendCampaign.goalAmount || 0;
+  const raised = backendCampaign.currentAmount || backendCampaign.raisedAmount || 0;
 
-    // Handle the structure from the user's curl response: { "ngoId": { "_id": "...", "ngoName": "..." } }
-    if (backendCampaign.ngoId && typeof backendCampaign.ngoId === 'object') {
-        organizerName = backendCampaign.ngoId.ngoName || backendCampaign.ngoId.name || 'Unknown';
-        organizerId = backendCampaign.ngoId._id;
-        organizerLogo = backendCampaign.ngoId.logo || `https://picsum.photos/seed/${organizerName}/100`;
-        // The curl response for ngoId doesn't have verification info. Let's assume verified if an NGO is linked.
-        verified = true;
-    } 
-    // Handle the structure from the original API spec I was given
-    else if (backendCampaign.ngo && typeof backendCampaign.ngo === 'object') {
-        organizerName = backendCampaign.ngo.name;
-        organizerId = backendCampaign.ngo._id;
-        organizerLogo = backendCampaign.ngo.logo || `https://picsum.photos/seed/${organizerName}/100`;
-        verified = backendCampaign.ngo.isVerified || false;
-    } 
-    // Fallback for admin-created campaigns that might just have a name
-    else if (typeof backendCampaign.organizer === 'string') {
-        organizerName = backendCampaign.organizer;
+  let status: Campaign['status'] = 'disabled';
+  if (backendCampaign.isActive) {
+    if (raised >= goal && goal > 0) {
+      status = 'completed';
+    } else {
+      status = 'active';
     }
+  }
 
-    const goal = backendCampaign.targetAmount || backendCampaign.goalAmount || 0;
-    const raised = backendCampaign.raisedAmount || backendCampaign.currentAmount || 0;
+  const organizerName = typeof backendCampaign.organizer === 'string' 
+      ? backendCampaign.organizer 
+      : (organizer.ngoName || organizer.fullName || 'Unknown');
 
-    let status: Campaign['status'] = 'disabled';
-    if (backendCampaign.isActive !== false) {
-        if (raised >= goal && goal > 0) {
-            status = 'completed';
-        } else {
-            status = 'active';
-        }
-    }
-    if (backendCampaign.status) {
-      status = backendCampaign.status.toLowerCase();
-    }
-
-    // The curl response shows 'campaignImages'. The original type might have 'images'. Handle both.
-    const images = backendCampaign.images?.length > 0 ? backendCampaign.images :
-                   backendCampaign.campaignImages?.length > 0 ? backendCampaign.campaignImages :
-                   [`https://picsum.photos/seed/${backendCampaign.title || 'default'}/800/600`];
-
+  const rawImages = backendCampaign.images || [];
 
   return {
     ...backendCampaign,
@@ -102,21 +81,24 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
     _id: backendCampaign._id,
     title: backendCampaign.title,
     slug: (backendCampaign.title || '').toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, ''),
+    thumbnail: makeAbsoluteUrl(rawImages.length > 0 ? rawImages[0] : null),
     organizer: organizerName,
-    organizerId: organizerId,
-    organizerLogo: organizerLogo,
+    organizerId: organizer._id,
+    organizerLogo: makeAbsoluteUrl(organizer.avatar),
     description: (backendCampaign.description || '').substring(0, 100) + '...',
     fullDescription: backendCampaign.fullDescription || backendCampaign.description || backendCampaign.explainStory || 'Full description not provided.',
     goal,
     raised,
     category: backendCampaign.category || 'Health',
     location: backendCampaign.location || 'India',
-    verified,
+    verified: organizer.approvalStatus === 'approved' && organizer.isActive,
     urgent: backendCampaign.isUrgent || false,
-    images: images,
+    images: rawImages.map(makeAbsoluteUrl),
+    documents: (backendCampaign.documents || []).map(makeAbsoluteUrl),
+    proofs: (backendCampaign.proofs || backendCampaign.proofDocs || []).map(makeAbsoluteUrl),
     status,
     endDate: backendCampaign.endDate,
-    isActive: backendCampaign.isActive !== false,
+    isActive: backendCampaign.isActive,
     approvalStatus: backendCampaign.approvalStatus || 'pending',
   };
 };
@@ -124,7 +106,7 @@ export const transformBackendCampaign = (backendCampaign: any): Campaign => {
 export const transformBackendUser = (backendUser: any): User => {
   let status: 'active' | 'pending' | 'disabled';
   const isApproved = backendUser.approvalStatus === 'approved';
-  
+
   if (isApproved && backendUser.isActive) {
       status = 'active';
   } else if (!isApproved && backendUser.approvalStatus === 'pending') {
@@ -133,7 +115,7 @@ export const transformBackendUser = (backendUser: any): User => {
       status = 'disabled';
   }
 
-  const name = backendUser.fullName || backendUser.name || backendUser.ngoName || backendUser.companyName;
+  const name = backendUser.fullName || backendUser.name;
   const profileData = backendUser.profile || {};
 
   return {
@@ -146,7 +128,7 @@ export const transformBackendUser = (backendUser: any): User => {
     phoneNumber: backendUser.phoneNumber,
     role: backendUser.role,
     status: status,
-    avatar: backendUser.profileImage || backendUser.logo || `https://picsum.photos/seed/${name}/100`,
+    avatar: makeAbsoluteUrl(backendUser.profileImage),
     createdAt: backendUser.createdAt,
     isActive: backendUser.isActive,
     approvalStatus: backendUser.approvalStatus,
@@ -155,8 +137,8 @@ export const transformBackendUser = (backendUser: any): User => {
       description: backendUser.description || profileData.description,
       address: backendUser.address || profileData.address || profileData.companyAddress,
       website: backendUser.website || profileData.website,
-      ...profileData,
-      ...backendUser // For public profiles that have fields at the top level
+      documents: (profileData.documents || []).map(makeAbsoluteUrl),
+      ...profileData
     }
   };
 };
@@ -181,96 +163,196 @@ export const authAPI = {
     request('/auth/logout', {
       method: 'POST',
     }),
+
+  refreshToken: () => 
+    request('/auth/refresh', {
+      method: 'POST',
+    }),
+
+  verifyEmail: (token: string) => 
+    request('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  forgotPassword: (email: string) => 
+    request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token: string, password: string) => 
+    request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+};
+
+// Payment Gateway API
+export const paymentAPI = {
+  createOrder: (donationData: any) => 
+    request('/payment/create-order', {
+      method: 'POST',
+      body: JSON.stringify(donationData),
+    }),
+  verifyPayment: (paymentVerificationData: any) =>
+    request('/payment/verify', {
+      method: 'POST',
+      body: JSON.stringify(paymentVerificationData)
+    }),
+};
+
+// Public API (assumed endpoint)
+export const publicAPI = {
+  getSettings: () => request('/settings/public'),
 };
 
 // User Profile Endpoints
 export const userAPI = {
-  // These are for the logged-in user, and remain unchanged
-  getProfile: () => request('/user/profile'),
-  updateProfile: (userData: any) => request('/user/profile', { method: 'PUT', body: JSON.stringify(userData) }),
+  getProfile: () => 
+    request('/user/profile'),
+
+  updateProfile: (userData: any) => 
+    request('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    }),
+
+  uploadAvatar: (formData: FormData) => 
+    request('/user/avatar', {
+      method: 'POST',
+      body: formData,
+      headers: {}, // Let browser set multipart headers
+    }),
+
+  changePassword: (currentPassword: string, newPassword: string) => 
+    request('/user/change-password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  deleteAccount: () => 
+    request('/user/account', {
+      method: 'DELETE',
+    }),
 };
 
 // Campaign Endpoints
 export const campaignAPI = {
-  getPublic: async (filters?: { page?: number; limit?: number; category?: string; location?: string; status?: string; sortBy?: string; search?: string }): Promise<{ campaigns: Campaign[], pagination: any, filters: any }> => {
-    const queryParams = new URLSearchParams();
-    if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-            if (value) {
-                queryParams.append(key, value.toString());
-            }
-        });
-    }
-    
-    const data = await request(`/public/campaigns?${queryParams.toString()}`);
-    return {
-        campaigns: data.campaigns.map(transformBackendCampaign),
-        pagination: data.pagination,
-        filters: data.filters
-    };
+  // Public campaigns
+  getPublic: async (): Promise<Campaign[]> => {
+    const data = await request('/public/campaigns');
+    const campaigns = data.campaigns || (Array.isArray(data) ? data : []);
+    return campaigns.map(transformBackendCampaign);
   },
 
   getById: async (campaignId: string): Promise<Campaign | null> => {
     try {
-      const data = await request(`/public/campaigns/${campaignId}`);
-      return transformBackendCampaign(data.campaign);
+      const data = await request(`/campaigns/${campaignId}`);
+      return transformBackendCampaign(data);
     } catch (error) {
-      console.error(error);
       return null;
     }
   },
-  
-  getFeatured: async (): Promise<Campaign[]> => {
-    const data = await request('/public/campaigns/featured');
-    // Assuming the endpoint returns a simple array under a key
-    const campaigns = data.campaigns || data;
+
+  getBySlug: async (slug: string): Promise<Campaign | null> => {
+    try {
+      const data = await request(`/campaigns/slug/${slug}`);
+      return transformBackendCampaign(data);
+    } catch (error) {
+      return null;
+    }
+  },
+
+  // User campaigns
+  getUserCampaigns: async (): Promise<Campaign[]> => {
+    const data = await request('/campaigns/my-campaigns');
+    const campaigns = data.campaigns || (Array.isArray(data) ? data : []);
     return campaigns.map(transformBackendCampaign);
   },
+
+  create: (campaignData: any) => 
+    request('/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(campaignData),
+    }),
+
+  update: (campaignId: string, campaignData: any) => 
+    request(`/campaigns/${campaignId}`, {
+      method: 'PUT',
+      body: JSON.stringify(campaignData),
+    }),
+
+  delete: (campaignId: string) => 
+    request(`/campaigns/${campaignId}`, {
+      method: 'DELETE',
+    }),
+
+  uploadImages: (campaignId: string, formData: FormData) => 
+    request(`/campaigns/${campaignId}/images`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    }),
 };
 
 // Donation Endpoints
 export const donationAPI = {
-  // Placeholder, assuming donation flow starts on client
+  create: (donationData: any) => 
+    request('/donations/new', {
+      method: 'POST',
+      body: JSON.stringify(donationData),
+    }),
+
+  getUserDonations: () => 
+    request('/donations/my-donations'),
+
+  getCampaignDonations: (campaignId: string) => 
+    request(`/donations/campaign/${campaignId}`),
+
+  processPayment: (paymentData: any) => 
+    request('/donations/process-payment', {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    }),
 };
 
 // Organization Endpoints
 export const organizationAPI = {
-  getNgoProfile: async (id: string): Promise<{ user: User, campaigns: Campaign[] }> => {
-    const data = await request(`/public/ngo/${id}`);
-    return {
-        user: transformBackendUser(data.ngo),
-        campaigns: (data.ngo.campaigns || []).map(transformBackendCampaign)
-    }
-  },
-  getCompanyProfile: async (id: string): Promise<User> => {
-    const data = await request(`/public/company/${id}`);
-    return transformBackendUser(data.company);
-  },
-  // This function is now deprecated in favor of specific profile endpoints
-  getProfileByUsername: async (username: string) => {
-    console.warn("getProfileByUsername is deprecated. Use getNgoProfile or getCompanyProfile with an ID.");
-    // This is a legacy fallback, it might not work with the new API.
-    throw new Error("Function not supported by new API. Please link to profiles by ID.");
-  },
-};
+  getPublic: async () => {
+    const [ngoData, companyData] = await Promise.allSettled([
+      request('/organizations/ngos/public'),
+      request('/organizations/companies/public')
+    ]);
 
-// Public Stats & Forms API
-export const publicAPI = {
-    getPlatformStats: async () => {
-        return await request('/public/stats');
-    },
-    submitContactForm: (formData: { name: string; email: string; subject: string; message: string; type: string }) => {
-        return request('/public/contact', {
-            method: 'POST',
-            body: JSON.stringify(formData),
-        });
-    },
-    subscribeNewsletter: (formData: { email: string; interests?: string[] }) => {
-        return request('/public/newsletter/subscribe', {
-            method: 'POST',
-            body: JSON.stringify(formData),
-        });
+    const ngos = ngoData.status === 'fulfilled' ? 
+      (ngoData.value.ngos || ngoData.value || []) : [];
+    const companies = companyData.status === 'fulfilled' ? 
+      (companyData.value.companies || companyData.value || []) : [];
+
+    return {
+      ngos: ngos.map(transformBackendUser),
+      companies: companies.map(transformBackendUser)
+    };
+  },
+
+  getByUsername: async (username: string) => {
+    const { ngos, companies } = await organizationAPI.getPublic();
+    const allOrgs = [...ngos, ...companies];
+
+    const user = allOrgs.find(u => u.username === username);
+    if (!user) {
+      throw new Error('Organization profile not found.');
     }
+
+    let campaigns: Campaign[] = [];
+    if (user.role === 'ngo') {
+      const publicCampaigns = await campaignAPI.getPublic();
+      campaigns = publicCampaigns.filter(c => c.organizerId === user._id);
+    }
+
+    return { user, campaigns };
+  },
 };
 
 // User Task Management API
@@ -322,7 +404,7 @@ export const adminAPI = {
     if (filters?.role && filters.role !== 'all') queryParams.append('role', filters.role);
     if (filters?.approvalStatus && filters.approvalStatus !== 'all') queryParams.append('approvalStatus', filters.approvalStatus);
     if (filters?.search) queryParams.append('search', filters.search);
-    
+
     const queryString = queryParams.toString();
     const endpoint = queryString ? `/admin/users?${queryString}` : '/admin/users';
 
@@ -355,7 +437,7 @@ export const adminAPI = {
             console.error("User profile structure not found in response for ID:", userId, response);
             return null;
         }
-        
+
         const combinedUserData = {
             ...userProfile.user,
             profile: userProfile.profile,
@@ -385,7 +467,7 @@ export const adminAPI = {
       method: 'PUT',
       body: JSON.stringify(userData),
     }),
-  
+
   updateUserProfile: (userId: string, profileData: any) =>
     request(`/admin/users/${userId}/profile`, {
       method: 'PUT',
@@ -405,11 +487,42 @@ export const adminAPI = {
     });
   },
 
-  deleteUser: (userId: string) => 
-    request(`/admin/users/${userId}/complete`, {
+  deleteUser: (userId: string) => request(`/admin/users/${userId}/complete`, {
       method: 'DELETE',
-    }),
-    
+  }),
+
+  // Profile image uploads
+  uploadUserProfileImage: (userId: string, imageFile: File) => {
+      const formData = new FormData();
+      formData.append('profileImage', imageFile);
+      return request(`/admin/users/${userId}/profile-image`, {
+          method: 'PUT',
+          body: formData,
+      });
+  },
+
+  uploadAdminProfileImage: (imageFile: File) => {
+      const formData = new FormData();
+      formData.append('profileImage', imageFile);
+      return request('/admin/profile-image', {
+          method: 'PUT',
+          body: formData,
+      });
+  },
+
+  uploadCompanyDocuments: async (userId: string, documentFiles: File[]) => {
+    const formData = new FormData();
+    documentFiles.forEach(file => formData.append('documents', file));
+    // NOTE: This is an assumed endpoint.
+    return request(`/admin/users/${userId}/documents`, {
+        method: 'POST',
+        body: formData,
+    });
+  },
+
+  // Settings Management
+  getSettings: () => request('/admin/settings'),
+
   generateNgoShareLink: (profileId: string) => 
     request(`/admin/ngos/${profileId}/share`, { method: 'POST' }),
 
@@ -426,7 +539,7 @@ export const adminAPI = {
       method: 'PUT',
       body: JSON.stringify({ customDesign: design }),
     }),
-  
+
   getNgos: async (): Promise<User[]> => {
     const { users } = await adminAPI.getUsers({ role: 'ngo', approvalStatus: 'approved', limit: 1000 });
     return users;
@@ -440,24 +553,24 @@ export const adminAPI = {
     if (filters.status && filters.status !== 'all') queryParams.append('status', filters.status);
     if (filters.approvalStatus && filters.approvalStatus !== 'all') queryParams.append('approvalStatus', filters.approvalStatus);
     if (filters.search) queryParams.append('search', filters.search);
-    
+
     const queryString = queryParams.toString();
     const endpoint = `/admin/campaigns?${queryString}`;
-    
+
     const response = await request(endpoint);
     const campaigns = response.data?.campaigns || response.campaigns || (Array.isArray(response) ? response : []);
-    
+
     return {
       campaigns: campaigns.map(transformBackendCampaign),
       pagination: response.data?.pagination || response.pagination
     };
   },
-  
+
   getCampaignById: async (campaignId: string): Promise<Campaign | null> => {
     const data = await request(`/admin/campaigns/${campaignId}`);
     return data ? transformBackendCampaign(data.campaign || data) : null;
   },
-  
+
   createCampaign: (campaignData: any) =>
     request('/admin/campaigns', {
       method: 'POST',
@@ -469,7 +582,7 @@ export const adminAPI = {
       method: 'PUT',
       body: JSON.stringify(campaignData),
     }),
-    
+
   updateCampaignStatus: (campaignId: string, isActive: boolean) =>
     request(`/admin/campaigns/${campaignId}/status`, {
       method: 'PUT',
@@ -480,17 +593,55 @@ export const adminAPI = {
     request(`/admin/campaigns/${campaignId}`, {
       method: 'DELETE',
     }),
-    
+
   approveCampaign: (campaignId: string, status: 'approved' | 'rejected') => 
     adminAPI.updateCampaign(campaignId, { approvalStatus: status }),
-  
+
   generateCampaignShareLink: (campaignId: string) => 
     request(`/admin/campaigns/${campaignId}/share`, { method: 'POST' }),
+
+  deleteCampaignFile: (campaignId: string, filePath: string) => {
+    // The filePath from frontend will be a full URL, e.g., http://localhost:5000/uploads/....
+    // Backend likely needs the relative path.
+    const relativePath = new URL(filePath).pathname;
+    return request(`/admin/campaigns/${campaignId}/file`, {
+        method: 'DELETE',
+        body: JSON.stringify({ filePath: relativePath })
+    });
+  },
+
+  // Campaign file uploads
+  uploadCampaignImages: async (campaignId: string, imageFiles: File[]) => {
+      const formData = new FormData();
+      imageFiles.forEach(file => formData.append('image', file));
+      return request(`/admin/campaigns/${campaignId}/images`, {
+          method: 'POST',
+          body: formData,
+      });
+  },
+
+  uploadCampaignDocuments: async (campaignId: string, documentFiles: File[]) => {
+      const formData = new FormData();
+      documentFiles.forEach(file => formData.append('documents', file));
+      return request(`/admin/campaigns/${campaignId}/documents`, {
+          method: 'POST',
+          body: formData,
+      });
+  },
+
+  uploadCampaignProofs: async (campaignId: string, proofFiles: File[]) => {
+      const formData = new FormData();
+      proofFiles.forEach(file => formData.append('proof', file));
+      return request(`/admin/campaigns/${campaignId}/proof`, {
+          method: 'POST',
+          body: formData,
+      });
+  },
 
 
   // Notice Management
   noticeAPI: {
-    getNotices: (filters: { page?: number; limit?: number; type?: string; priority?: string; search?: string; status?: string, targetRole?: string }): Promise<{notices: Notice[], pagination: any}> => {
+    getNotices: (filters: { page?: number; limit?: number; type?: string; priority?: string; search?: string; status?: string, targetRole?: string }) => {
         const queryParams = new URLSearchParams();
         Object.entries(filters).forEach(([key, value]) => {
             if (value && value !== 'all') {
@@ -514,61 +665,82 @@ export const adminAPI = {
     }),
   },
 
+  // Donation Management
+  donations: {
+    getDonations: (filters: { page?: number; limit?: number; status?: string; search?: string }) => {
+      const queryParams = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+          if (value && value !== 'all') {
+              queryParams.append(key, value.toString());
+          }
+      });
+      return request(`/admin/donations?${queryParams.toString()}`);
+    },
+    updateDonation: (id: string, data: Partial<Donation>) => request(`/admin/donations/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+    }),
+    deleteDonation: (id: string) => request(`/admin/donations/${id}`, {
+        method: 'DELETE',
+    }),
+  },
+
+  // Settings Management
+  settingsAPI: {
+    getSettings: () => request('/admin/settings'),
+    updateRateLimiter: (data: any) => request('/admin/settings', { 
+      method: 'PUT', 
+      body: JSON.stringify({ category: 'rate_limiting', settings: data }) 
+    }),
+    updateBranding: (data: any) => request('/admin/settings', { 
+      method: 'PUT', 
+      body: JSON.stringify({ category: 'branding', settings: data }) 
+    }),
+    uploadLogo: (formData: FormData) => request('/admin/branding/logo', { method: 'PUT', body: formData }),
+    uploadFavicon: (formData: FormData) => request('/admin/branding/favicon', { method: 'PUT', body: formData }),
+    updateContact: (data: any) => request('/admin/settings', { 
+      method: 'PUT', 
+      body: JSON.stringify({ category: 'legal', settings: data }) 
+    }),
+    updateCopyright: (data: any) => request('/admin/settings', { 
+      method: 'PUT', 
+      body: JSON.stringify({ category: 'legal', settings: data }) 
+    }),
+    updateEnvironment: (data: any) => request('/admin/settings', { 
+      method: 'PUT', 
+      body: JSON.stringify({ category: 'environment', settings: data }) 
+    }),
+    changeUserPassword: (userId: string, data: any) => request(`/admin/users/${userId}/password`, { method: 'PUT', body: JSON.stringify(data) }),
+    resetSettings: (data: any) => request('/admin/settings/reset', { method: 'POST', body: JSON.stringify(data) })
+  },
+
 
   // Dashboard & Reports
-  getDashboardStats: async () => {
-    try {
-      const response = await request('/admin/dashboard/stats');
-      const data = response.data || response;
-      const overview = data.overview || {};
-
-      return {
-        totalUsers: overview.totalUsers || 0,
-        totalCampaigns: overview.totalCampaigns || 0,
-        totalDonations: overview.totalRaised || 0,
-        pendingApprovals: (overview.pendingUsers || 0) + (overview.pendingCampaigns || 0),
-        userDistribution: { 
-          donor: (overview.totalUsers || 0) - (overview.totalNgos || 0) - (overview.totalCompanies || 0), 
-          ngo: overview.totalNgos || 0, 
-          company: overview.totalCompanies || 0 
-        },
-        campaignStatus: { 
-          active: overview.activeCampaigns || 0, 
-          completed: overview.completedCampaigns || 0,
-          disabled: (overview.totalCampaigns || 0) - (overview.activeCampaigns || 0) - (overview.completedCampaigns || 0)
-        },
-        recentUsers: data.recentUsers || [],
-        systemHealth: data.systemHealth || {}
-      };
-    } catch (error) {
-      console.error("Dashboard API failed:", error);
-      return {
-        totalUsers: 0,
-        totalCampaigns: 0,
-        totalDonations: 0,
-        pendingApprovals: 0,
-        userDistribution: { donor: 0, ngo: 0, company: 0 },
-        campaignStatus: { active: 0, completed: 0, disabled: 0 },
-        recentUsers: [],
-        systemHealth: {}
-      };
-    }
+  dashboard: {
+    getOverview: (timeRange: string = '30d'): Promise<DashboardData> => 
+      request(`/admin/dashboard?timeRange=${timeRange}`),
+    
+    getSystemHealth: (): Promise<{success: boolean, data: SystemHealth}> => 
+      request('/admin/dashboard/system-health'),
+      
+    getSecurity: (): Promise<{success: boolean, data: SecurityDashboardData}> =>
+      request('/admin/dashboard/security'),
   },
 
   reportsAPI: {
-    getUsersReport: (filters: any): Promise<{ users: User[], stats: UserReportStats }> => {
+    getUsersReport: async (filters: any) => {
         const queryParams = new URLSearchParams(filters);
         return request(`/admin/reports/users?${queryParams.toString()}`);
     },
-    getCampaignsReport: (filters: any): Promise<{ campaigns: any[], summary: CampaignReportSummary }> => {
+    getCampaignsReport: async (filters: any) => {
         const queryParams = new URLSearchParams(filters);
         return request(`/admin/reports/campaigns?${queryParams.toString()}`);
     },
-    getDonationsReport: (filters: any): Promise<{ donations: any[], summary: DonationReportSummary }> => {
+    getDonationsReport: async (filters: any) => {
         const queryParams = new URLSearchParams(filters);
         return request(`/admin/reports/donations?${queryParams.toString()}`);
     },
-    getFinancialReport: (filters: any): Promise<FinancialReportSummary> => {
+    getFinancialReport: async (filters: any) => {
         const queryParams = new URLSearchParams(filters);
         return request(`/admin/reports/financial?${queryParams.toString()}`);
     },
@@ -601,18 +773,27 @@ export const adminAPI = {
   },
 };
 
-// --- Public APIs (Legacy Naming) ---
+// --- Public APIs ---
 export const getSharedProfile = async (shareId: string): Promise<{ user: User, campaigns: Campaign[], customization?: { html: string; css: string } } | null> => {
     try {
-        const data = await request(`/public/share/profile/${shareId}`);
+        const response = await request(`/public/share/profile/${shareId}`);
+        const data = response.data || response;
+
+        // Based on logs, the main user object is nested inside profile.userId
         const userDetails = data.profile?.userId;
 
         if (!data || !data.profile || !userDetails?._id) {
-            console.error("Shared profile data structure not found", data);
+            console.error("Shared profile data structure not found in response for share ID:", shareId, response);
             return null;
         }
-        
-        const combinedUserData = { ...userDetails, role: data.type, profile: data.profile };
+
+        // Combine the user details from `profile.userId` and the profile shell from `profile`
+        // so that transformBackendUser can process it correctly.
+        const combinedUserData = {
+            ...userDetails, // has _id, fullName, email
+            role: data.type, // role is at the top level of the data object
+            profile: data.profile, // contains all NGO/Company specific fields
+        };
 
         return {
             user: transformBackendUser(combinedUserData),
@@ -627,28 +808,30 @@ export const getSharedProfile = async (shareId: string): Promise<{ user: User, c
 
 export const getSharedCampaign = async (shareId: string): Promise<{ campaign: Campaign } | null> => {
     try {
-        const data = await request(`/public/share/campaign/${shareId}`);
+        const response = await request(`/public/share/campaign/${shareId}`);
+        const data = response.data || response;
+
         if (!data || !data.campaign || !data.campaign._id) {
+            console.error("Shared campaign data structure not found in response for share ID:", shareId, response);
             return null;
         }
-        return { campaign: transformBackendCampaign(data.campaign) };
+
+        return {
+            campaign: transformBackendCampaign(data.campaign),
+        };
     } catch (error) {
         console.error(`Error fetching shared campaign with ID ${shareId}:`, error);
         return null;
     }
 };
 
-
 // Backwards compatibility - Legacy function exports
 export const loginUser = authAPI.login;
 export const signupUser = authAPI.signup;
 export const logoutUser = authAPI.logout;
-export const getProfileByUsername = organizationAPI.getProfileByUsername;
+export const getProfileByUsername = organizationAPI.getByUsername;
 export const getCampaignById = campaignAPI.getById;
-export const getPublicCampaigns = async (): Promise<Campaign[]> => {
-    const data = await campaignAPI.getPublic({ limit: 100 }); // Get a decent number for dropdowns
-    return data.campaigns;
-};
+export const getPublicCampaigns = campaignAPI.getPublic;
 export const getAdminUsers = adminAPI.getAllUsers;
 export const getAdminUserById = adminAPI.getUserById;
 export const approveUser = (userId: string) => adminAPI.approveUser(userId, 'approved');
@@ -658,8 +841,9 @@ export const createAdminUser = adminAPI.createUser;
 export const updateUser = adminAPI.updateUser;
 export const getAdminCampaigns = async () => (await adminAPI.getCampaigns({limit: 1000})).campaigns;
 export const toggleCampaignStatus = (campaign: Campaign) => adminAPI.updateCampaignStatus(campaign._id, !campaign.isActive);
-export const getAdminDashboardStats = adminAPI.getDashboardStats;
 export const updateUserProfile = adminAPI.updateUserProfile;
 export const deleteUser = adminAPI.deleteUser;
 export const getShareablePageDesign = adminAPI.getShareablePageDesign;
 export const updateShareablePageDesign = adminAPI.updateShareablePageDesign;
+
+export type { User, Campaign, Notice, Task, Donation, DashboardData, SystemHealth, SecurityDashboardData };

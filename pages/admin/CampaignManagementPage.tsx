@@ -1,4 +1,7 @@
 
+
+
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminAPI } from '../../services/api.ts';
@@ -144,7 +147,7 @@ const CampaignManagementPage: React.FC = () => {
                     <tr key={campaign._id} className="hover:bg-gray-50 dark:hover:bg-brand-dark cursor-pointer" onClick={() => navigate(`/admin/campaigns/${campaign._id}`)}>
                         <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                            <img className="h-10 w-10 rounded-md object-cover" src={campaign.images[0]} alt={campaign.title} />
+                            <img className="h-10 w-10 rounded-md object-cover" src={campaign.thumbnail} alt={campaign.title} />
                             <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900 dark:text-white">{campaign.title}</div>
                             <div className="text-sm text-gray-500 dark:text-gray-400">by {campaign.organizer}</div>

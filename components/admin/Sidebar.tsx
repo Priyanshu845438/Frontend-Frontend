@@ -1,7 +1,10 @@
 
+
+
+
 import React, { useState, useEffect } from 'react';
-import { NavLink, Link, useLocation } from 'react-router-dom';
-import { FiGrid, FiUsers, FiHeart, FiSettings, FiFileText, FiBell, FiChevronDown, FiChevronRight, FiList, FiPlusSquare, FiCheckSquare } from 'react-icons/fi';
+import { Link, NavLink, useLocation } from 'react-router-dom';
+import { FiGrid, FiUsers, FiHeart, FiSettings, FiFileText, FiBell, FiChevronDown, FiChevronRight, FiList, FiPlusSquare, FiCheckSquare, FiSliders, FiShield, FiHardDrive, FiCalendar, FiDollarSign } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const menuItems = [
@@ -30,6 +33,13 @@ const menuItems = [
         ]
     },
     {
+        label: 'Donations',
+        icon: <FiDollarSign />,
+        to: '/admin/donations',
+        isSingle: true,
+        path: '/admin/donations'
+    },
+    {
         label: 'Notices',
         icon: <FiBell />,
         path: '/admin/notices',
@@ -39,11 +49,13 @@ const menuItems = [
         ]
     },
     {
-        label: 'Task Management',
+        label: 'Tasks',
         icon: <FiCheckSquare />,
-        to: '/admin/tasks',
-        isSingle: true,
-        path: '/admin/tasks'
+        path: '/admin/tasks',
+        subItems: [
+            { label: 'All Tasks', to: '/admin/tasks', icon: <FiList /> },
+            { label: 'Calendar', to: '/admin/tasks/calendar', icon: <FiCalendar /> }
+        ]
     },
     {
         label: 'Reports',
@@ -55,9 +67,12 @@ const menuItems = [
     {
         label: 'Settings',
         icon: <FiSettings />,
-        to: '/admin/settings',
-        isSingle: true,
-        path: '/admin/settings'
+        path: '/admin/settings',
+        subItems: [
+            { label: 'General', to: '/admin/settings#general', icon: <FiSliders /> },
+            { label: 'Security', to: '/admin/settings#security', icon: <FiShield /> },
+            { label: 'System', to: '/admin/settings#system', icon: <FiHardDrive /> }
+        ]
     },
 ];
 
@@ -82,6 +97,12 @@ const Sidebar: React.FC = () => {
     const baseLinkClasses = "flex items-center px-4 py-3 text-gray-300 hover:bg-brand-royal-navy hover:text-white transition-colors rounded-lg";
     const activeLinkClasses = "bg-brand-royal-navy text-white font-semibold";
     
+    const subMenuAnimation = {
+        initial: { opacity: 0, height: 0 },
+        animate: { opacity: 1, height: 'auto' },
+        exit: { opacity: 0, height: 0 }
+    };
+
     return (
         <div className="w-64 bg-brand-deep-blue text-white flex flex-col min-h-screen shadow-lg">
             <div className="flex items-center h-20 px-6 border-b border-gray-700">
@@ -110,17 +131,23 @@ const Sidebar: React.FC = () => {
                                 <AnimatePresence>
                                     {openMenu === item.label && (
                                         <motion.div
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: 'auto' }}
-                                            exit={{ opacity: 0, height: 0 }}
+                                            {...subMenuAnimation}
                                             className="pl-4 mt-1 space-y-1 overflow-hidden"
                                         >
                                             {item.subItems?.map(subItem => (
                                                 <NavLink
                                                     key={subItem.to}
                                                     to={subItem.to}
-                                                    end={subItem.to === item.path || (item.subItems || []).length === 1}
-                                                    className={({ isActive }) => `${baseLinkClasses} text-sm ${isActive ? activeLinkClasses : ''}`}
+                                                    end={!subItem.to.includes('#')}
+                                                    className={({ isActive }) => {
+                                                        if (subItem.to.includes('#')) {
+                                                            const hash = subItem.to.split('#')[1];
+                                                            const pathIsActive = location.pathname === subItem.to.split('#')[0];
+                                                            const hashIsActive = location.hash === `#${hash}`;
+                                                            return `${baseLinkClasses} text-sm ${(pathIsActive && hashIsActive) ? activeLinkClasses : ''}`;
+                                                        }
+                                                        return `${baseLinkClasses} text-sm ${isActive ? activeLinkClasses : ''}`;
+                                                    }}
                                                 >
                                                     <span className="mr-3 text-base">{subItem.icon}</span>
                                                     {subItem.label}

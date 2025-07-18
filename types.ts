@@ -1,4 +1,5 @@
 
+
 export interface User {
   _id: string;
   id: string;
@@ -19,6 +20,7 @@ export interface User {
     description?: string;
     address?: string;
     website?: string;
+    documents?: string[];
     // NGO specific
     ngoName?: string;
     registrationNumber?: string;
@@ -59,6 +61,7 @@ export interface Campaign {
   id: string;
   title: string;
   slug: string;
+  thumbnail: string;
   organizer: string;
   organizerId: string;
   organizerLogo: string;
@@ -71,12 +74,14 @@ export interface Campaign {
   verified: boolean;
   urgent: boolean;
   images: string[];
+  documents?: string[];
+  proofs?: string[];
   status: 'active' | 'completed' | 'disabled';
   endDate: string;
   isActive: boolean;
   approvalStatus: 'pending' | 'approved' | 'rejected';
   targetAmount?: number;
-  ngoId?: { _id: string; fullName: string; };
+  ngoId?: { _id: string; fullName: string; avatar?: string; };
   // Add all other fields from API
   campaignName?: string;
   goalAmount?: number;
@@ -129,7 +134,6 @@ export interface PolicyDocument {
   title: string;
   url: string;
   description: string;
-  category: 'Legal' | 'Financial';
 }
 
 export interface PolicyContent {
@@ -225,23 +229,167 @@ export interface TaskStats {
     overdue: number;
 }
 
-export interface FaqItem {
-    question: string;
-    answer: string;
-    category: 'General' | 'Donors' | 'NGOs & Partners' | 'Technical';
-}
-
-export interface Partner {
-    id: number;
-    name: string;
-    logoUrl: string;
-    type: 'Corporate' | 'Foundation' | 'Institutional';
-}
-
-export interface ImpactStory {
-    id: number;
+export interface Donation {
+  _id: string;
+  donorId: {
+    _id: string;
+    fullName: string;
+  };
+  campaignId: {
+    _id: string;
     title: string;
-    description: string;
-    imageUrl: string;
-    campaignCategory: string;
+  };
+  amount: number;
+  status: 'Completed' | 'Pending' | 'Failed';
+  transactionId: string;
+  donationDate: string;
+  isAnonymous: boolean;
+  paymentMethod?: string;
+}
+
+// Admin Dashboard Types
+export interface UserKPIs {
+  total: number;
+  active: number;
+  growth: number;
+  pending: number;
+  activePercentage: number;
+}
+
+export interface OrganizationKPIs {
+  ngos: {
+    total: number;
+    active: number;
+    growth: number;
+  };
+  companies: {
+    total: number;
+    active: number;
+    growth: number;
+  };
+}
+
+export interface CampaignKPIs {
+  total: number;
+  active: number;
+  growth: number;
+  pending: number;
+  stats?: {
+    totalTarget: number;
+    totalRaised: number;
+    completionRate: number;
+  };
+}
+
+export interface DonationKPIs {
+  totalAmount: number;
+  totalDonations: number;
+  averageAmount: number;
+}
+
+export interface KPIs {
+  users: UserKPIs;
+  organizations: OrganizationKPIs;
+  campaigns: CampaignKPIs;
+  donations: DonationKPIs;
+}
+
+export interface SecurityMetrics {
+  status: string;
+  failedLogins24h: number;
+  suspiciousActivities: number;
+  riskScore: number;
+}
+
+export interface QuickActionData {
+  pendingApprovals: number;
+  flaggedActivities: number;
+  systemAlerts: number;
+  maintenanceRequired: boolean;
+}
+
+export interface Activity {
+  _id: string;
+  action: string;
+  user?: {
+    _id: string;
+    name: string;
+    avatar?: string;
+  };
+  details: string;
+  timestamp: string;
+}
+
+export interface Recommendation {
+  _id: string;
+  type: string;
+  title: string;
+  description: string;
+  actionLink: string;
+}
+
+export interface DashboardData {
+  success: boolean;
+  timestamp: string;
+  timeRange: string;
+  kpis: KPIs;
+  security: SecurityMetrics;
+  quickActions: QuickActionData;
+  recentActivities: Activity[];
+  recommendations: Recommendation[];
+  // For charts - assuming this data structure might be added later
+  analytics?: {
+    userGrowth: { date: string, count: number }[];
+    donationTrend: { date: string, amount: number }[];
+  }
+}
+
+export interface SystemHealth {
+  server: {
+    platform: string;
+    arch: string;
+    nodeVersion: string;
+    uptime: number;
+  };
+  memory: {
+    total: number;
+    free: number;
+    used: number;
+    percentage: number;
+  };
+  cpu: {
+    cores: number;
+    loadAverage: number[];
+    usage: {
+      user: number;
+      system: number;
+    };
+  };
+  database: {
+    status: string;
+    responseTime: string;
+  };
+}
+
+export interface SecurityDashboardData {
+  metrics: {
+    authentication: {
+      failedLogins24h: number;
+      successfulLogins24h: number;
+      uniqueLoginIPs: number;
+    };
+    users: {
+      activeUsers: number;
+      suspendedUsers: number;
+      pendingApprovals: number;
+      adminUsers: number;
+    };
+    threats: {
+      suspiciousActivities: number;
+      blockedIPs: number;
+      securityAlerts: number;
+    };
+  };
+  recentEvents: any[];
+  recommendations: any[];
 }

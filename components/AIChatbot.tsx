@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect, FormEvent } from 'react';
 import { GoogleGenAI, Chat } from '@google/genai';
 import { FiMessageSquare, FiX, FiSend, FiLoader } from 'react-icons/fi';
@@ -104,13 +105,24 @@ const AIChatbot: React.FC = () => {
     }
   };
 
+  const fabAnimation = {
+      whileHover: { scale: 1.1 },
+      whileTap: { scale: 0.9 }
+  };
+
+  const chatWindowAnimation = {
+      initial: { opacity: 0, y: 50, scale: 0.5 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      exit: { opacity: 0, y: 50, scale: 0.5 },
+      transition: { type: 'spring' as const, stiffness: 300, damping: 30 }
+  };
+
   return (
     <>
       <motion.button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 bg-brand-gold text-white w-16 h-16 rounded-full flex items-center justify-center shadow-lg z-[9998]"
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        {...fabAnimation}
         aria-label="Open AI Chat"
       >
         <FiMessageSquare size={28} />
@@ -119,10 +131,7 @@ const AIChatbot: React.FC = () => {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.5 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.5 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            {...chatWindowAnimation}
             className="fixed bottom-24 right-6 w-full max-w-sm h-full max-h-[calc(100vh-8rem)] sm:max-h-[600px] bg-white dark:bg-brand-dark-200 rounded-xl shadow-2xl flex flex-col z-[9999] overflow-hidden border border-gray-200 dark:border-gray-700"
           >
             {/* Header */}

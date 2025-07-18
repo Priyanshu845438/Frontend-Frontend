@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiX, FiUserPlus } from 'react-icons/fi';
 import Button from '../Button.tsx';
@@ -79,23 +80,31 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onUs
         }
     }, [isOpen]);
 
+    const modalAnimation = {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 }
+    };
+    
+    const modalContentAnimation = {
+        initial: { opacity: 0, y: -50, scale: 0.95 },
+        animate: { opacity: 1, y: 0, scale: 1 },
+        exit: { opacity: 0, y: -50, scale: 0.95 },
+        transition: { duration: 0.3, ease: 'easeOut' as const }
+    };
+
     return (
         <AnimatePresence>
             {isOpen && (
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    {...modalAnimation}
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
                     onClick={onClose}
                 >
                     <motion.div
-                        initial={{ opacity: 0, y: -50, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -50, scale: 0.95 }}
-                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                        {...modalContentAnimation}
                         className="bg-white dark:bg-brand-dark-200 rounded-lg shadow-xl w-full max-w-2xl m-4 relative"
-                        onClick={e => e.stopPropagation()}
+                        onClick={(e: MouseEvent<HTMLDivElement>) => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
