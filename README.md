@@ -33,12 +33,16 @@ This is the **frontend application** for the full-stack Donation Platform projec
 
 ```bash
 # Clone the repository
-git clone https://github.com/Priyanshu845438/Frontend-Frontend(Donation-platform)
-cd Frontend-Frontend(Donation-platform)
+git clone https://github.com/Priyanshu845438/Frontend-Frontend.git
+cd Frontend-Frontend
 
 # Install dependencies
 npm install
 
 # Run the development server
 npm run dev
+```
 
+## More projects
+
+Explore [Priyanshu Raj’s public repositories](https://github.com/Priyanshu845438/Priyanshu845438/blob/main/PUBLIC-REPOSITORIES.md) or [follow the GitHub profile](https://github.com/Priyanshu845438) for updates.
